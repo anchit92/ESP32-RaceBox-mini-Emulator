@@ -69,7 +69,7 @@ The electronics should cost under 40$.
 - Place the ESP32 in the slot  
 - Route cables neatly
 ![image info](Images/Wiring%20Guide.jpg "Wiring Guide")
-- Close the case carefully, it should click together. Make sure none of the wires are pinced or in the way of the buttons
+- Close the case carefully, it should click together. Make sure none of the wires are pinched or in the way of the buttons
 ![alt text](Images/GoPro%20base%20Assembled.jpg "GoPro mount version")
 ![alt text](Images/Base%20Assembled.jpg "Basic version")
 
@@ -102,7 +102,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 - *OPTIONAL*- Update deviceName(line 33) to whatever you want (the format is "RaceBox Mini {10 digit number}").
 - Click the "Upload" button (right arrow icon) in the Arduino IDE to compile and upload the code to your ESP32.
     - Note: Sometimes during the upload, I had to hold the BOOT button, press and release the EN button then release the BOOT button for the upload to work.
-- Check the Serial Monitor and ensure everything starts up succesfully, initialization is complete when it starts displaying "BLE Packet Rate: 0.00 Hz" every 5 seconds.
+- Check the Serial Monitor and ensure everything starts up successfully, initialization is complete when it starts displaying "BLE Packet Rate: 0.00 Hz" every 5 seconds.
 
 ## 3D Printed Enclosure
 
@@ -113,7 +113,7 @@ The repository includes `*.3mf` files for the custom 3D-printed enclosure design
 * 2x Buttons
 * 1x axdl_mount
 
-Theres a Accelrometer blank included if you have a different accelrometer to create your own mount.
+Theres a Accelerometer blank included if you have a different accelerometer to create your own mount.
 
 ### Recommended Print Settings:
 
@@ -129,7 +129,7 @@ Once the firmware is uploaded and the device is powered on:
 
 1.  The ESP32 will start advertising a BLE service named "**RaceBox Mini 0123456789**"(the devicename you customized before uploading the firmware).
 2.  Use a compatible BLE client application to connect to the device.
-    - Tested compatible apps, theoreticaly anything that supports a racebox mini should work (except the RaceBox app).
+    - Tested compatible apps, theoretically anything that supports a racebox mini should work (except the RaceBox app).
         - Solostorm (Android)
         - NMEAconnect (iOS)
         - AutoX DL(iOS)
