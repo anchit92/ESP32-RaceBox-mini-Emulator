@@ -39,7 +39,7 @@ The electronics should cost under 40$.
 
 ## Assembly Instructions
 
-### Wire the Components, load the firmware and test them ourdoors.
+### Wire the Components, load the firmware and test them outdoors.
 
 **ESP32 <--> U-blox GNSS Module:**
 - ESP32 GPIO 16 (RX2) <--> GNSS TX  
@@ -140,4 +140,4 @@ Feel free to open issues or submit pull requests if you have suggestions, improv
 
 ## License
 
-This project is open-source and available under the [MIT License](LICENSE.md).
+This project is open-source and available under the [MIT License](LICENSE).
