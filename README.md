@@ -131,6 +131,7 @@ Once the firmware is uploaded and the device is powered on:
 2.  Use a compatible BLE client application to connect to the device.
     - Tested compatible apps, theoretically anything that supports a racebox mini should work (except the RaceBox app).
         - Solostorm (Android)
+        - RaceChrono (Android)
         - NMEAconnect (iOS)
         - AutoX DL(iOS)
 
