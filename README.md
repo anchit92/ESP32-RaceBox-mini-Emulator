@@ -132,6 +132,7 @@ Once the firmware is uploaded and the device is powered on:
     - Tested compatible apps, theoretically anything that supports a racebox mini should work (except the RaceBox app).
         - Solostorm (Android)
         - RaceChrono (Android)
+        - RaceChrono Pro (Android)
         - NMEAconnect (iOS)
         - AutoX DL(iOS)
 
