@@ -104,10 +104,10 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 * **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
   Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
 
-  // ✅ Correct:
+  ✅ Correct:
   String deviceName = "RaceBox Mini 6942069420";
 
-  // ❌ Incorrect – Do not change the prefix:
+  ❌ Incorrect – Do not change the prefix:
   String deviceName = "MY GPS 6942069420";
 
 * Click the **Upload** button (the right arrow icon) in the Arduino IDE to compile and upload the code to your ESP32.
