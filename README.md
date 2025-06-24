@@ -98,7 +98,6 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Configure Board Settings:
     - Go to Tools > Board and select your specific ESP32 board (e.g., "ESP32 Dev Module").
     - Ensure the correct Upload Speed and Port are selected.
-Got it! Here's the same Markdown without the triple backticks, so you can easily **copy and paste** it directly into your README:
 
 ### 5. Upload the Firmware
 
