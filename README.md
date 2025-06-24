@@ -39,7 +39,7 @@ The electronics should cost under 40$.
 
 Both GNSS modules listed above perform nearly identically in terms of signal acquisition and accuracy. The \~\$20 module ([link](https://a.co/d/b6DcUS6)) has a ceramic antenna that’s roughly twice the size of the one on the \~\$40 module ([link](https://a.co/d/54zrba3)), and it *feels* like it connects faster during casual use.
 
-However, in repeated side-by-side testing from a cold start, both modules consistently acquire a signal at the same rate. I’ve tested this about ten times, and the results have been indistinguishable and I've given up on trying meaure the difference.
+However, in repeated side-by-side testing from a cold start, both modules consistently acquire a signal at the same rate. I’ve tested this about ten times, and the results have been indistinguishable and I've given up on trying to meaure the difference.
 
 The main measurable difference is power consumption:
 
