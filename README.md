@@ -98,11 +98,32 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Configure Board Settings:
     - Go to Tools > Board and select your specific ESP32 board (e.g., "ESP32 Dev Module").
     - Ensure the correct Upload Speed and Port are selected.
-### 5. Upload the Firmware:
-- *OPTIONAL*- Update deviceName(line 33) to whatever you want (the format is "RaceBox Mini {10 digit number}").
-- Click the "Upload" button (right arrow icon) in the Arduino IDE to compile and upload the code to your ESP32.
-    - Note: Sometimes during the upload, I had to hold the BOOT button, press and release the EN button then release the BOOT button for the upload to work.
-- Check the Serial Monitor and ensure everything starts up successfully, initialization is complete when it starts displaying "BLE Packet Rate: 0.00 Hz" every 5 seconds.
+Got it! Here's the same Markdown without the triple backticks, so you can easily **copy and paste** it directly into your README:
+
+### 5. Upload the Firmware
+
+* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
+  Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
+
+  // ✅ Correct:
+  String deviceName = "RaceBox Mini 6942069420";
+
+  // ❌ Incorrect – Do not change the prefix:
+  String deviceName = "MY GPS 6942069420";
+
+* Click the **Upload** button (the right arrow icon) in the Arduino IDE to compile and upload the code to your ESP32.
+
+  * If upload fails, try this sequence while the output shows "Connecting....":
+
+    1. Hold the **BOOT** button
+    2. Press and release the **EN** button
+    3. Then release the **BOOT** button
+
+* Open the **Serial Monitor** to verify startup. Initialization is complete when you see:
+
+  BLE Packet Rate: 0.00 Hz | GNSS Update Rate: 25.20 Hz
+
+  printed every 5 seconds.
 
 ## 3D Printed Enclosure
 
