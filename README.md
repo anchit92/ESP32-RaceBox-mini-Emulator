@@ -120,7 +120,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 
 * Open the **Serial Monitor** to verify startup. Initialization is complete when you see:
 
-  BLE Packet Rate: 0.00 Hz | GNSS Update Rate: 25.20 Hz
+  BLE Packet Rate: 0.00 Hz | GNSS Update Rate: 25.00 Hz
 
   printed every 5 seconds.
 
