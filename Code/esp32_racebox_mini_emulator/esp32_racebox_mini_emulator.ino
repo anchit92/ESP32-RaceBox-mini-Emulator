@@ -17,7 +17,7 @@
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
 
-Adafruit_MPU6050 mpu;
+// Adafruit_MPU6050 mpu;
 
 // --- BLE Configuration ---
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -131,13 +131,13 @@ void resetGpsBaudRate() {
 
 void setup() {
   Serial.begin(115200);
-  if (!mpu.begin()) {
-    Serial.println("❌ Failed to find MPU6050 chip");
-    while (1) delay(100);
-  }
-  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  // if (!mpu.begin()) {
+  //   Serial.println("❌ Failed to find MPU6050 chip");
+  //   while (1) delay(100);
+  // }
+  // mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  // mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  // mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
   GPS_Serial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   if (!myGNSS.begin(GPS_Serial)) {
@@ -224,17 +224,28 @@ void loop() {
         gpsUpdateCount++;
 
         // Now that we're sending a packet, read the acceloromter
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
+        // sensors_event_t a, g, temp;
+        // mpu.getEvent(&a, &g, &temp);
+        // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
+        // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
+        // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
+        // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+
+        // // Convert gyro to centi-deg/sec
+        // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
+        // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
+        // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+        
         // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+        int16_t gX = 0 * 1000.0 / 9.80665;
+        int16_t gY = 0 * 1000.0 / 9.80665;
+        int16_t gZ = 0 * 1000.0 / 9.80665;
 
         // Convert gyro to centi-deg/sec
-        int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+        int16_t rX = 0 * 180.0 / M_PI * 100.0;
+        int16_t rY = 0 * 180.0 / M_PI * 100.0;
+        int16_t rZ = 0 * 180.0 / M_PI * 100.0;
+
         uint8_t payload[80] = {0};
         uint8_t packet[88] = {0};
 
