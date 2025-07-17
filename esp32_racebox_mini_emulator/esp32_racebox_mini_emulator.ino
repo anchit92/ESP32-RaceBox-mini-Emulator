@@ -40,6 +40,70 @@ unsigned int gpsUpdateCount = 0;
 const unsigned long GPS_RATE_REPORT_INTERVAL_MS = 5000;
 unsigned int gnssUpdateCount = 0;
 
+TaskHandle_t imuTaskHandle;
+
+#define IMU_SAMPLE_RATE_HZ 1000
+#define IMU_AVG_WINDOW_MS 10
+// --- IMU Buffer Configuration ---
+const int IMU_AVG_SAMPLES = 20;
+volatile int imuWriteIndex = 0;
+// --- IMU Exponential Filtered Gyro Output ---
+float filteredAX = 0, filteredAY = 0, filteredAZ = 0;
+float filteredGX = 0, filteredGY = 0, filteredGZ = 0;
+
+// Smoothing factor (tweak to taste)
+const float imuAlpha = 0.5;
+
+struct ImuSample {
+  float ax, ay, az;
+  float gx, gy, gz;
+};
+
+ImuSample imuBuffer[IMU_AVG_SAMPLES];
+portMUX_TYPE imuMux = portMUX_INITIALIZER_UNLOCKED;
+
+void imuSamplingTask(void *pvParameters) {
+  const TickType_t delay = pdMS_TO_TICKS(1); // 1 kHz
+  sensors_event_t a, g, temp;
+  static bool imuInitialized = false;
+
+  while (true) {
+    mpu.getEvent(&a, &g, &temp);
+
+    if (!imuInitialized) {
+      // Initialize filter with first sample to prevent startup lag
+      filteredAX = a.acceleration.x;
+      filteredAY = a.acceleration.y;
+      filteredAZ = a.acceleration.z;
+      filteredGX = g.gyro.x;
+      filteredGY = g.gyro.y;
+      filteredGZ = g.gyro.z;
+      imuInitialized = true;
+    } else {
+      // Apply exponential filter
+      filteredAX = imuAlpha * a.acceleration.x + (1.0 - imuAlpha) * filteredAX;
+      filteredAY = imuAlpha * a.acceleration.y + (1.0 - imuAlpha) * filteredAY;
+      filteredAZ = imuAlpha * a.acceleration.z + (1.0 - imuAlpha) * filteredAZ;
+
+      filteredGX = imuAlpha * g.gyro.x + (1.0 - imuAlpha) * filteredGX;
+      filteredGY = imuAlpha * g.gyro.y + (1.0 - imuAlpha) * filteredGY;
+      filteredGZ = imuAlpha * g.gyro.z + (1.0 - imuAlpha) * filteredGZ;
+    }
+
+    portENTER_CRITICAL(&imuMux);
+    imuBuffer[imuWriteIndex].ax = filteredAX;
+    imuBuffer[imuWriteIndex].ay = filteredAY;
+    imuBuffer[imuWriteIndex].az = filteredAZ;
+    imuBuffer[imuWriteIndex].gx = filteredGX;
+    imuBuffer[imuWriteIndex].gy = filteredGY;
+    imuBuffer[imuWriteIndex].gz = filteredGZ;
+    imuWriteIndex = (imuWriteIndex + 1) % IMU_AVG_SAMPLES;
+    portEXIT_CRITICAL(&imuMux);
+
+    vTaskDelay(delay);
+  }
+}
+
 
 // --- BLE Callbacks ---
 class MyServerCallbacks : public BLEServerCallbacks {
@@ -137,7 +201,7 @@ void setup() {
   }
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  mpu.setFilterBandwidth(MPU6050_BAND_94_HZ);
 
   GPS_Serial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   if (!myGNSS.begin(GPS_Serial)) {
@@ -206,6 +270,16 @@ void setup() {
   Serial.println("📡 BLE advertising started.");
 
   lastGpsRateCheckTime = millis();
+  xTaskCreatePinnedToCore(
+  imuSamplingTask,      // Task function
+  "IMUSampleTask",      // Name
+  2048,                 // Stack size
+  NULL,                 // Parameters
+  1,                    // Priority
+  &imuTaskHandle,       // Handle
+  1                     // Run on Core 1
+  );
+
 }
 
 void loop() {
@@ -223,20 +297,51 @@ void loop() {
         lastPacketSendTime = now;
         gpsUpdateCount++;
 
-        // Now that we're sending a packet, read the acceloromter
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
-        // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+          // // Now that we're sending a packet, read the acceloromter
+          // sensors_event_t a, g, temp;
+          // mpu.getEvent(&a, &g, &temp);
+          // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
+          // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
+          // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
+          // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
 
-        // Convert gyro to centi-deg/sec
-        int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+          // // Convert gyro to centi-deg/sec
+          // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
+          // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
+          // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+
         uint8_t payload[80] = {0};
         uint8_t packet[88] = {0};
+
+        float sumAX = 0, sumAY = 0, sumAZ = 0;  
+        float sumGX = 0, sumGY = 0, sumGZ = 0;
+
+        portENTER_CRITICAL(&imuMux);
+        for (int i = 0; i < IMU_AVG_SAMPLES; i++) {
+          sumAX += imuBuffer[i].ax;
+          sumAY += imuBuffer[i].ay;
+          sumAZ += imuBuffer[i].az;
+
+          sumGX += imuBuffer[i].gx;
+          sumGY += imuBuffer[i].gy;
+          sumGZ += imuBuffer[i].gz;
+        }
+        portEXIT_CRITICAL(&imuMux);
+
+        float avgAX = sumAX / IMU_AVG_SAMPLES;
+        float avgAY = sumAY / IMU_AVG_SAMPLES;
+        float avgAZ = sumAZ / IMU_AVG_SAMPLES;
+        float avgGX = sumGX / IMU_AVG_SAMPLES;
+        float avgGY = sumGY / IMU_AVG_SAMPLES;
+        float avgGZ = sumGZ / IMU_AVG_SAMPLES;
+
+        int16_t gX = avgAX * 1000.0 / 9.80665;
+        int16_t gY = avgAY * 1000.0 / 9.80665;
+        int16_t gZ = avgAZ * 1000.0 / 9.80665;
+
+        int16_t rX = avgGX * 180.0 / M_PI * 100.0;
+        int16_t rY = avgGY * 180.0 / M_PI * 100.0;
+        int16_t rZ = avgGZ * 180.0 / M_PI * 100.0;
 
         // Access data directly from myGNSS.packetUBXNAVPVT->data
         writeLittleEndian(payload, 0, myGNSS.packetUBXNAVPVT->data.iTOW);
@@ -332,7 +437,6 @@ void loop() {
 
         pCharacteristicTx->setValue(packet, 88);
         pCharacteristicTx->notify();
-        delay(20);
       }
     }
 
