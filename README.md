@@ -105,7 +105,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Adafruit MPU6050
     - Adafruit Unified Sensor
     - SparkFun u-blox GNSS Arduino Library (ensure it's version 2)
-    - BLEDevice (This is usually part of the ESP32 board package, but confirm it's available)
+
 ### 4. Open the Sketch: 
 - Open the esp32_racebox_mini_emulator.ino in the Arduino IDE.
     - Configure Board Settings:
