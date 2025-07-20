@@ -143,7 +143,7 @@ The repository includes `*.3mf` files for the custom 3D-printed enclosure design
 
 * 1x Base file.(either the GoPro mount version or the basic one to use with velcro)
 * 1x Lid depending on the the type of GPS module you have.
-* 2x Buttons
+* 2x Buttons (If you print a lid that supports buttons)
 * 1x axdl_mount
 
 Theres a Accelerometer blank included if you have a different accelerometer to create your own mount.
