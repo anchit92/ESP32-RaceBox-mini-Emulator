@@ -105,6 +105,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Adafruit MPU6050
     - Adafruit Unified Sensor
     - SparkFun u-blox GNSS Arduino Library (ensure it's version 2)
+    - SimpleKalmanFilter
 
 ### 4. Open the Sketch: 
 - Open the esp32_racebox_mini_emulator.ino in the Arduino IDE.
@@ -112,7 +113,14 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Go to Tools > Board and select your specific ESP32 board (e.g., "ESP32 Dev Module").
     - Ensure the correct Upload Speed and Port are selected.
 
-### 5. Upload the Firmware
+### 5. Configure Firmware
+
+
+* Update the GNSS constellations to use(lines 25-30).
+  * For the SAM-M10Q module, I recommend using GPS and one local one, Galilieo should work great in most places. Selecting too many constellations can cause the update frequency to drop from 25Hz.
+  * For the MG-902 module, you can select up to 4 constellations but it doesnt really make it more accurate than the SAM-M10Q module, but it doesnt appear to drop its frequency either, so might as well.
+
+  https://app.qzss.go.jp/GNSSView/gnssview.html This could help you pick which constellations to pick.
 
 * **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
   Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
@@ -122,6 +130,10 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 
   ❌ Incorrect – Do not change the prefix:
   String deviceName = "MY GPS 6942069420";
+
+
+### 6. Upload the Firmware
+
 
 * Click the **Upload** button (the right arrow icon) in the Arduino IDE to compile and upload the code to your ESP32.
 

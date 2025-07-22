@@ -6,6 +6,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <SimpleKalmanFilter.h>
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -23,14 +24,25 @@ HardwareSerial GPS_Serial(2);
 
 #define ENABLE_GNSS_GPS
 #define ENABLE_GNSS_GALILEO
-//#define ENABLE_GNSS_GLONASS
-//#define ENABLE_GNSS_BEIDOU
+// #define ENABLE_GNSS_GLONASS
+// #define ENABLE_GNSS_BEIDOU
 //#define ENABLE_GNSS_SBAS
 //#define ENABLE_GNSS_QZSS
 
-Adafruit_MPU6050 mpu;
-
 const String deviceName = "RaceBox Mini 0123456789";
+
+Adafruit_MPU6050 mpu;
+// Kalman filters for accelerometer (x, y, z)
+SimpleKalmanFilter kf_ax(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_ay(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_az(1.0, 1.0, 0.99);
+
+// Kalman filters for gyroscope (x, y, z)
+SimpleKalmanFilter kf_gx(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_gy(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_gz(1.0, 1.0, 0.99);
+
+
 
 // --- BLE Configuration ---
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -280,15 +292,26 @@ void loop() {
         // Now that we're sending a packet, read the acceloromter
         sensors_event_t a, g, temp;
         mpu.getEvent(&a, &g, &temp);
-        // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+        // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
+        // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
+        // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
+        // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+
+        // // Convert gyro to centi-deg/sec
+        // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
+        // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
+        // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+
+        // Convert accelerometer to milli-g
+        int16_t gX = kf_ax.updateEstimate(a.acceleration.x) * 1000.0 / 9.80665;
+        int16_t gY = kf_ay.updateEstimate(a.acceleration.y) * 1000.0 / 9.80665;
+        int16_t gZ = kf_az.updateEstimate(a.acceleration.z) * 1000.0 / 9.80665;
 
         // Convert gyro to centi-deg/sec
-        int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+        int16_t rX = kf_gx.updateEstimate(g.gyro.x) * 180.0 / M_PI * 100.0;
+        int16_t rY = kf_gy.updateEstimate(g.gyro.y) * 180.0 / M_PI * 100.0;
+        int16_t rZ = kf_gz.updateEstimate(g.gyro.z) * 180.0 / M_PI * 100.0;
+
         uint8_t payload[80] = {0};
         uint8_t packet[88] = {0};
 
