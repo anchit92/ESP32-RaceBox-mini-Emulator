@@ -1,6 +1,5 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <BLEDevice.h>
@@ -16,8 +15,22 @@
 
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
+// --- Enable GNSS constellations ---
+// The specific constellations available depend on your u-blox module 
+// and how many you can turn on depend on your u-blox module 
+// Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
+// check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
+
+#define ENABLE_GNSS_GPS
+#define ENABLE_GNSS_GALILEO
+//#define ENABLE_GNSS_GLONASS
+//#define ENABLE_GNSS_BEIDOU
+//#define ENABLE_GNSS_SBAS
+//#define ENABLE_GNSS_QZSS
 
 Adafruit_MPU6050 mpu;
+
+const String deviceName = "RaceBox Mini 0123456789";
 
 // --- BLE Configuration ---
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -29,8 +42,6 @@ BLECharacteristic *pCharacteristicTx = NULL;
 BLECharacteristic *pCharacteristicRx = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
-
-const String deviceName = "RaceBox Mini 0123456789";
 
 // --- Packet Timing ---
 unsigned long lastPacketSendTime = 0;
@@ -157,36 +168,79 @@ void setup() {
     Serial.println("❌ Failed to set GPS update rate.");
   }
 
-  // --- Enable multiple GNSS constellations ---
-  // The specific constellations available depend on your u-blox module.
-  // Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
+  // --- GNSS Constellation Setup ---
 
-  // Enable GPS
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS)) {
-    Serial.println("✅ GPS enabled.");
-  } else {
-    Serial.println("❌ Failed to enable GPS.");
-  }
+  // GPS
+  #ifdef ENABLE_GNSS_GPS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS)) {
+      Serial.println("✅ GPS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable GPS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GPS);
+    Serial.println("🚫 GPS disabled.");
+  #endif
 
-  // Enable Galileo
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO)) {
-    Serial.println("✅ Galileo enabled.");
-  } else {
-    Serial.println("❌ Failed to enable Galileo.");
-  }
+  // Galileo
+  #ifdef ENABLE_GNSS_GALILEO
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO)) {
+      Serial.println("✅ Galileo enabled.");
+    } else {
+      Serial.println("❌ Failed to enable Galileo.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GALILEO);
+    Serial.println("🚫 Galileo disabled.");
+  #endif
 
-  // Enable GLONASS
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS)) {
-    Serial.println("✅ GLONASS enabled.");
-  } else {
-    Serial.println("❌ Failed to enable GLONASS.");
-  }
-  
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU)) {
-    Serial.println("✅ BEIDOU enabled.");
-  } else {
-    Serial.println("❌ Failed to enable BEIDOU.");
-  }
+  // GLONASS
+  #ifdef ENABLE_GNSS_GLONASS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS)) {
+      Serial.println("✅ GLONASS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable GLONASS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GLONASS);
+    Serial.println("🚫 GLONASS disabled.");
+  #endif
+
+  // BeiDou
+  #ifdef ENABLE_GNSS_BEIDOU
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU)) {
+      Serial.println("✅ BEIDOU enabled.");
+    } else {
+      Serial.println("❌ Failed to enable BEIDOU.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_BEIDOU);
+    Serial.println("🚫 BEIDOU disabled.");
+  #endif
+
+  // Optional: QZSS
+  #ifdef ENABLE_GNSS_QZSS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_QZSS)) {
+      Serial.println("✅ QZSS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable QZSS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_QZSS);
+    Serial.println("🚫 QZSS disabled.");
+  #endif
+
+  // Optional: SBAS (satellite-based augmentation)
+  #ifdef ENABLE_GNSS_SBAS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS)) {
+      Serial.println("✅ SBAS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable SBAS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_SBAS);
+    Serial.println("🚫 SBAS disabled.");
+  #endif
 
   // --- BLE Setup ---
   BLEDevice::init(deviceName.c_str());
