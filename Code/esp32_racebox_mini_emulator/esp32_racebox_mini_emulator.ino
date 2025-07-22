@@ -26,8 +26,8 @@ HardwareSerial GPS_Serial(2);
 #define ENABLE_GNSS_GALILEO
 // #define ENABLE_GNSS_GLONASS
 // #define ENABLE_GNSS_BEIDOU
-//#define ENABLE_GNSS_SBAS
-//#define ENABLE_GNSS_QZSS
+// #define ENABLE_GNSS_SBAS
+// #define ENABLE_GNSS_QZSS
 
 const String deviceName = "RaceBox Mini 0123456789";
 
