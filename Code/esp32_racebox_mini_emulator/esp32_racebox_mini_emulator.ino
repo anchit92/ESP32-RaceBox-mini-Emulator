@@ -1,12 +1,12 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <SimpleKalmanFilter.h>
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -16,8 +16,33 @@
 
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
+// --- Enable GNSS constellations ---
+// The specific constellations available depend on your u-blox module 
+// and how many you can turn on depend on your u-blox module 
+// Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
+// check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
+
+#define ENABLE_GNSS_GPS
+#define ENABLE_GNSS_GALILEO
+// #define ENABLE_GNSS_GLONASS
+// #define ENABLE_GNSS_BEIDOU
+// #define ENABLE_GNSS_SBAS
+// #define ENABLE_GNSS_QZSS
+
+const String deviceName = "RaceBox Mini 0123456789";
 
 Adafruit_MPU6050 mpu;
+// Kalman filters for accelerometer (x, y, z)
+SimpleKalmanFilter kf_ax(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_ay(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_az(1.0, 1.0, 0.99);
+
+// Kalman filters for gyroscope (x, y, z)
+SimpleKalmanFilter kf_gx(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_gy(1.0, 1.0, 0.99);
+SimpleKalmanFilter kf_gz(1.0, 1.0, 0.99);
+
+
 
 // --- BLE Configuration ---
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
@@ -29,8 +54,6 @@ BLECharacteristic *pCharacteristicTx = NULL;
 BLECharacteristic *pCharacteristicRx = NULL;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
-
-const String deviceName = "RaceBox Mini 0123456789";
 
 // --- Packet Timing ---
 unsigned long lastPacketSendTime = 0;
@@ -157,36 +180,79 @@ void setup() {
     Serial.println("❌ Failed to set GPS update rate.");
   }
 
-  // --- Enable multiple GNSS constellations ---
-  // The specific constellations available depend on your u-blox module.
-  // Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
+  // --- GNSS Constellation Setup ---
 
-  // Enable GPS
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS)) {
-    Serial.println("✅ GPS enabled.");
-  } else {
-    Serial.println("❌ Failed to enable GPS.");
-  }
+  // GPS
+  #ifdef ENABLE_GNSS_GPS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS)) {
+      Serial.println("✅ GPS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable GPS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GPS);
+    Serial.println("🚫 GPS disabled.");
+  #endif
 
-  // Enable Galileo
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO)) {
-    Serial.println("✅ Galileo enabled.");
-  } else {
-    Serial.println("❌ Failed to enable Galileo.");
-  }
+  // Galileo
+  #ifdef ENABLE_GNSS_GALILEO
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO)) {
+      Serial.println("✅ Galileo enabled.");
+    } else {
+      Serial.println("❌ Failed to enable Galileo.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GALILEO);
+    Serial.println("🚫 Galileo disabled.");
+  #endif
 
-  // Enable GLONASS
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS)) {
-    Serial.println("✅ GLONASS enabled.");
-  } else {
-    Serial.println("❌ Failed to enable GLONASS.");
-  }
-  
-  if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU)) {
-    Serial.println("✅ BEIDOU enabled.");
-  } else {
-    Serial.println("❌ Failed to enable BEIDOU.");
-  }
+  // GLONASS
+  #ifdef ENABLE_GNSS_GLONASS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS)) {
+      Serial.println("✅ GLONASS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable GLONASS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GLONASS);
+    Serial.println("🚫 GLONASS disabled.");
+  #endif
+
+  // BeiDou
+  #ifdef ENABLE_GNSS_BEIDOU
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU)) {
+      Serial.println("✅ BEIDOU enabled.");
+    } else {
+      Serial.println("❌ Failed to enable BEIDOU.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_BEIDOU);
+    Serial.println("🚫 BEIDOU disabled.");
+  #endif
+
+  // Optional: QZSS
+  #ifdef ENABLE_GNSS_QZSS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_QZSS)) {
+      Serial.println("✅ QZSS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable QZSS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_QZSS);
+    Serial.println("🚫 QZSS disabled.");
+  #endif
+
+  // Optional: SBAS (satellite-based augmentation)
+  #ifdef ENABLE_GNSS_SBAS
+    if (myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS)) {
+      Serial.println("✅ SBAS enabled.");
+    } else {
+      Serial.println("❌ Failed to enable SBAS.");
+    }
+  #else
+    myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_SBAS);
+    Serial.println("🚫 SBAS disabled.");
+  #endif
 
   // --- BLE Setup ---
   BLEDevice::init(deviceName.c_str());
@@ -226,15 +292,26 @@ void loop() {
         // Now that we're sending a packet, read the acceloromter
         sensors_event_t a, g, temp;
         mpu.getEvent(&a, &g, &temp);
-        // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+        // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
+        // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
+        // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
+        // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
+
+        // // Convert gyro to centi-deg/sec
+        // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
+        // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
+        // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+
+        // Convert accelerometer to milli-g
+        int16_t gX = kf_ax.updateEstimate(a.acceleration.x) * 1000.0 / 9.80665;
+        int16_t gY = kf_ay.updateEstimate(a.acceleration.y) * 1000.0 / 9.80665;
+        int16_t gZ = kf_az.updateEstimate(a.acceleration.z) * 1000.0 / 9.80665;
 
         // Convert gyro to centi-deg/sec
-        int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+        int16_t rX = kf_gx.updateEstimate(g.gyro.x) * 180.0 / M_PI * 100.0;
+        int16_t rY = kf_gy.updateEstimate(g.gyro.y) * 180.0 / M_PI * 100.0;
+        int16_t rZ = kf_gz.updateEstimate(g.gyro.z) * 180.0 / M_PI * 100.0;
+
         uint8_t payload[80] = {0};
         uint8_t packet[88] = {0};
 
