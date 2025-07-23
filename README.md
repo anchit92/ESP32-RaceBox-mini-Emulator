@@ -122,7 +122,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 
   https://app.qzss.go.jp/GNSSView/gnssview.html This could help you pick which constellations to pick.
 
-* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
+* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 32** to personalize your device.
   Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
 
   ✅ Correct:
