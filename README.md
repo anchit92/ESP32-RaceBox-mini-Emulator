@@ -48,6 +48,7 @@ The main measurable difference is power consumption:
 
 I personally keep the \$20 one in my autocross backpack, mostly due to the antenna size and subjective performance. That said, the \$20 version uses an older chipset. While it’s still reliable and performs well, I’m unsure how long it will remain available or supported—which is why I’ve included both options here.
 
+I noticed that the original GPS is unavailable at amazon, theoretically this one should work- https://a.co/d/bNwME7S but be warned that its currently untested and theres no lid for it.
 ---
 
 ## Assembly Instructions
@@ -188,3 +189,4 @@ Feel free to open issues or submit pull requests if you have suggestions, improv
 ## License
 
 This project is open-source and available under the [MIT License](LICENSE).
+
