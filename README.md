@@ -187,8 +187,6 @@ Once the firmware is uploaded and the device is powered on:
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
 
-## License
 
-This project is open-source and available under the [MIT License](LICENSE).
 
 
