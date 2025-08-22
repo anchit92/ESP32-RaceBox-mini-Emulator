@@ -25,7 +25,7 @@ The device is designed to be housed in a custom 3D-printed enclosure, with desig
 To build this project, you'll need the following components:
 
 - **ESP32 Development Board**: (https://a.co/d/fTThpTl)  
-- **U-blox GNSS Module**: (https://a.co/d/b6DcUS6 or https://a.co/d/54zrba3)
+- **U-blox GNSS Module**: (https://a.co/d/b6DcUS6 or https://a.co/d/54zrba3 or https://a.co/d/fxp2tLk)
 - **MPU6050 Accelerometer/Gyroscope Module**: (https://a.co/d/dCMwffg or similar)  
 - **24AWG Hook-up Wire/Jumper Wires** or just use the wiring that comes with GNSS module, its perfect for this application.
 - **M3x6 Screws** (2)    
@@ -34,21 +34,6 @@ To build this project, you'll need the following components:
 - **3D Printer & ABS Filament**  
 
 The electronics should cost under 40$. 
-
-### Notes on GNSS Module Options
-
-Both GNSS modules listed above perform nearly identically in terms of signal acquisition and accuracy. The \~\$20 module ([link](https://a.co/d/b6DcUS6)) has a ceramic antenna that’s roughly twice the size of the one on the \~\$40 module ([link](https://a.co/d/54zrba3)), and it *feels* like it connects faster during casual use.
-
-However, in repeated side-by-side testing from a cold start, both modules consistently acquire a signal at the same rate. I’ve tested this about ten times, and the results have been indistinguishable, I've given up on trying to measure the difference.
-
-The main measurable difference is power consumption:
-
-* With the **\$20 module** the project draws approximately **0.14 A** during operation
-* With the **\$40 module** the project draws approximately **0.11 A** during operation
-
-I personally keep the \$20 one in my autocross backpack, mostly due to the antenna size and subjective performance. That said, the \$20 version uses an older chipset. While it’s still reliable and performs well, I’m unsure how long it will remain available or supported—which is why I’ve included both options here.
-
-I noticed that the original GPS is unavailable at amazon, theoretically this one should work- https://a.co/d/bNwME7S but be warned that its currently untested and theres no lid for it.
 
 ---
 
@@ -67,7 +52,6 @@ I noticed that the original GPS is unavailable at amazon, theoretically this one
 - ESP32 GPIO 22 (SCL) <--> MPU6050 SCL  
 - ESP32 5V or 3.3V <--> MPU6050 VCC *(check voltage requirements)*
 - ESP32 GND <--> MPU6050 GND  
-
 
 ---
 
