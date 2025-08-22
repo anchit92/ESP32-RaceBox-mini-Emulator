@@ -53,7 +53,6 @@ The electronics should cost under 40$.
 - ESP32 5V or 3.3V <--> MPU6050 VCC *(check voltage requirements)*
 - ESP32 GND <--> MPU6050 GND  
 
-
 ---
 
 ### Prepare the 3D Printed Case
@@ -109,7 +108,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 
   https://app.qzss.go.jp/GNSSView/gnssview.html This could help you pick which constellations to pick.
 
-* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
+* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 32** to personalize your device.
   Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
 
   ✅ Correct:
@@ -142,7 +141,7 @@ The repository includes `*.3mf` files for the custom 3D-printed enclosure design
 
 * 1x Base file.(either the GoPro mount version or the basic one to use with velcro)
 * 1x Lid depending on the the type of GPS module you have.
-* 2x Buttons
+* 2x Buttons (If you print a lid that supports buttons)
 * 1x axdl_mount
 
 Theres a Accelerometer blank included if you have a different accelerometer to create your own mount.
@@ -172,6 +171,6 @@ Once the firmware is uploaded and the device is powered on:
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
 
-## License
 
-This project is open-source and available under the [MIT License](LICENSE).
+
+
