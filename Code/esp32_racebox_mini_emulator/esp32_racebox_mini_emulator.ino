@@ -24,7 +24,7 @@ HardwareSerial GPS_Serial(2);
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
 #define ENABLE_GNSS_GPS
-// #define ENABLE_GNSS_GALILEO
+#define ENABLE_GNSS_GALILEO
 // #define ENABLE_GNSS_GLONASS
 // #define ENABLE_GNSS_BEIDOU
 // #define ENABLE_GNSS_SBAS
