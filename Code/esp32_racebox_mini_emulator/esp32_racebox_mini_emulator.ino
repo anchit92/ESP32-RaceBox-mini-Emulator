@@ -13,6 +13,7 @@
 #define GPS_TX_PIN 17
 #define GPS_BAUD 115200
 #define FACTORY_GPS_BAUD 9600
+#define MAX_NAVIGATION_RATE 25
 
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
@@ -23,7 +24,7 @@ HardwareSerial GPS_Serial(2);
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
 #define ENABLE_GNSS_GPS
-#define ENABLE_GNSS_GALILEO
+// #define ENABLE_GNSS_GALILEO
 // #define ENABLE_GNSS_GLONASS
 // #define ENABLE_GNSS_BEIDOU
 // #define ENABLE_GNSS_SBAS
@@ -173,9 +174,9 @@ void setup() {
   // Set GNSS output to PVT only
   myGNSS.setAutoPVT(true);
   myGNSS.setDynamicModel(DYN_MODEL_AUTOMOTIVE);
-    // --- Configure GPS update rate to 25 Hz ---
-  if (myGNSS.setNavigationFrequency(25)) {
-    Serial.println("✅ GPS update rate set to 25 Hz.");
+    // --- Configure GPS update rate to MAX_NAVIGATION_RATE Hz ---
+  if (myGNSS.setNavigationFrequency(MAX_NAVIGATION_RATE)) {
+  Serial.printf("✅ GPS update rate set to %d Hz.\n",MAX_NAVIGATION_RATE );
   } else {
     Serial.println("❌ Failed to set GPS update rate.");
   }
