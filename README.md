@@ -102,7 +102,7 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 ### 5. Configure Firmware
 
 
-* Update the GNSS constellations to use(lines 25-30).
+* Update the GNSS constellations to use(lines 26-31).
   * For the SAM-M10Q module, I recommend using GPS and one local one, Galilieo should work great in most places. Selecting too many constellations can cause the update frequency to drop from 25Hz.
   * For the MG-902 module, you can select up to 4 constellations but it doesnt really make it more accurate than the SAM-M10Q module, but it doesnt appear to drop its frequency either, so might as well.
 
@@ -170,6 +170,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
