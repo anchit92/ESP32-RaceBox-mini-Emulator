@@ -1,4 +1,5 @@
 # Open Source RaceBox Mini Emulator
+> **Disclaimer:** This project is independent and open-source. It is not affiliated with, endorsed by, or officially connected to RaceBox. The name “RaceBox Mini” is used only to describe compatibility.
 
 ## Overview
 
@@ -170,6 +171,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
