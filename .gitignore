@@ -1,0 +1,30 @@
+/.vscode/
+/.pio/
+/.pioenvs/
+/.cache/
+/.pytest_cache/
+
+# PlatformIO build artifacts and environment folders
+/.pio/build/
+/.pio/libdeps/
+/.pio/envs/
+/*.pio
+*.elf
+*.bin
+*.hex
+*.map
+*.pioenvs
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Python virtualenv
+venv/
+env/
+
+# Misc
+*.swp

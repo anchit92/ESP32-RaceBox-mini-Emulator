@@ -7,6 +7,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <SimpleKalmanFilter.h>
+#include <string>
+#include <vector>
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -79,21 +81,52 @@ class MyServerCallbacks : public BLEServerCallbacks {
 
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
-    String rxValue = pCharacteristic->getValue();
-    if (rxValue.length() > 0) {
+    std::string rxValue = pCharacteristic->getValue();
+    if (!rxValue.empty()) {
       Serial.print("📨 Received BLE command: ");
-      for (char c : rxValue)
-        Serial.printf("0x%02X ", (uint8_t)c);
+      for (unsigned char c : rxValue) Serial.printf("0x%02X ", (uint8_t)c);
       Serial.println();
+
+      // Forward raw UBX/command bytes to the GNSS module over UART
+      GPS_Serial.write((const uint8_t*)rxValue.data(), rxValue.size());
+      Serial.print("➡ Forwarded to GNSS: ");
+      for (unsigned char c : rxValue) Serial.printf("0x%02X ", (uint8_t)c);
+      Serial.println();
+
+      // Wait briefly for any immediate response from GNSS and forward it back over BLE
+      unsigned long start = millis();
+      const unsigned long timeout = 250; // ms
+      std::vector<uint8_t> resp;
+      while (millis() - start < timeout) {
+        while (GPS_Serial.available()) {
+          resp.push_back((uint8_t)GPS_Serial.read());
+        }
+        if (!resp.empty()) break;
+        delay(10);
+      }
+      if (!resp.empty()) {
+        Serial.print("⬅ Response from GNSS: ");
+        for (uint8_t b : resp) Serial.printf("0x%02X ", b);
+        Serial.println();
+
+        // Send raw response bytes back to the BLE client (no additional framing)
+        if (pCharacteristicTx) {
+          pCharacteristicTx->setValue(resp.data(), resp.size());
+          pCharacteristicTx->notify();
+        }
+      }
     }
   }
 };
 
 // --- UBX Packet Construction Helpers ---
-template <typename T>
-void writeLittleEndian(uint8_t* buffer, int offset, T value) {
-  memcpy(buffer + offset, &value, sizeof(T));
-}
+// Explicit overloads to avoid template parsing issues on some toolchains
+void writeLittleEndian(uint8_t* buffer, int offset, uint32_t value) { memcpy(buffer + offset, &value, 4); }
+void writeLittleEndian(uint8_t* buffer, int offset, int32_t value)  { memcpy(buffer + offset, &value, 4); }
+void writeLittleEndian(uint8_t* buffer, int offset, uint16_t value) { memcpy(buffer + offset, &value, 2); }
+void writeLittleEndian(uint8_t* buffer, int offset, int16_t value)  { memcpy(buffer + offset, &value, 2); }
+void writeLittleEndian(uint8_t* buffer, int offset, uint8_t value)  { buffer[offset] = value; }
+void writeLittleEndian(uint8_t* buffer, int offset, int8_t value)   { buffer[offset] = (uint8_t)value; }
 
 void calculateChecksum(uint8_t* payload, uint16_t len, uint8_t cls, uint8_t id, uint8_t* ckA, uint8_t* ckB) {
   *ckA = *ckB = 0;
@@ -265,10 +298,31 @@ void setup() {
   pCharacteristicTx->addDescriptor(new BLE2902());
   pCharacteristicRx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
-
   pService->start();
+
+  // --- Device Information Service (optional but expected by some official apps) ---
+  BLEService *pDeviceInfo = pServer->createService("0000180a-0000-1000-8000-00805f9b34fb");
+  // Model (e.g. "RaceBox Mini")
+  BLECharacteristic *pModel = pDeviceInfo->createCharacteristic("00002a24-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
+  pModel->setValue(std::string("RaceBox Mini"));
+  // Serial number (last 10 digits of device name)
+  BLECharacteristic *pSerial = pDeviceInfo->createCharacteristic("00002a25-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
+  if (deviceName.length() >= 10) pSerial->setValue(std::string(deviceName.substring(deviceName.length() - 10).c_str())); else pSerial->setValue(std::string("0000000000"));
+  // Firmware revision
+  BLECharacteristic *pFirm = pDeviceInfo->createCharacteristic("00002a26-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
+  pFirm->setValue(std::string("3.3"));
+  // Hardware revision
+  BLECharacteristic *pHardware = pDeviceInfo->createCharacteristic("00002a27-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
+  pHardware->setValue(std::string("1"));
+  // Manufacturer
+  BLECharacteristic *pManufacturer = pDeviceInfo->createCharacteristic("00002a29-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
+  pManufacturer->setValue(std::string("RaceBox"));
+  pDeviceInfo->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
+  // Advertise Device Information Service as well to help official apps discover the device
+  pAdvertising->addServiceUUID("0000180a-0000-1000-8000-00805f9b34fb");
+  pAdvertising->setScanResponse(true);
   BLEDevice::startAdvertising();
   Serial.println("📡 BLE advertising started.");
 
@@ -386,6 +440,9 @@ void loop() {
         }
         writeLittleEndian(payload, 66, latLonFlags);
 
+        // Offset 67: Battery status (1 byte) - report 100%
+        writeLittleEndian(payload, 67, (uint8_t)100);
+
         writeLittleEndian(payload, 68, gX);
         writeLittleEndian(payload, 70, gY);
         writeLittleEndian(payload, 72, gZ);
@@ -410,7 +467,7 @@ void loop() {
 
         pCharacteristicTx->setValue(packet, 88);
         pCharacteristicTx->notify();
-        delay(20);
+        delay(5);
       }
     }
 
@@ -419,7 +476,20 @@ void loop() {
     if ((now - lastGpsRateCheckTime) >= GPS_RATE_REPORT_INTERVAL_MS) {
       float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
       float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
-      Serial.printf("BLE Packet Rate: %.2f Hz | GNSS Update Rate: %.2f Hz\n", bleRate, gnssRate);
+      // Additional satellite info for debugging: number of satellites, fix type, horizontal accuracy, and lat/lon
+      uint8_t sats = 0;
+      uint8_t fix = 0;
+      uint32_t hAcc = 0;
+      double lat = 0.0, lon = 0.0;
+      if (myGNSS.packetUBXNAVPVT != NULL) {
+        sats = myGNSS.packetUBXNAVPVT->data.numSV;
+        fix = myGNSS.packetUBXNAVPVT->data.fixType;
+        hAcc = myGNSS.packetUBXNAVPVT->data.hAcc;
+        lat = myGNSS.packetUBXNAVPVT->data.lat * 1e-7;
+        lon = myGNSS.packetUBXNAVPVT->data.lon * 1e-7;
+      }
+      Serial.printf("BLE Packet Rate: %.2f Hz | GNSS Update Rate: %.2f Hz | SVs: %u | Fix: %u | HAcc: %u mm | Lat: %.7f Lon: %.7f\n",
+                    bleRate, gnssRate, sats, fix, hAcc, lat, lon);
       gpsUpdateCount = 0;
       gnssUpdateCount = 0;
       lastGpsRateCheckTime = now;
