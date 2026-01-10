@@ -71,16 +71,18 @@ unsigned int gnssUpdateCount = 0;
 class MyServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
     deviceConnected = true;
-    Serial.println("✅ BLE Client connected");
+    // Request a larger MTU to fit an 88-byte packet + headers in one go
+    pServer->updatePeerMTU(pServer->getConnId(), 128); 
+    Serial.println("✅ BLE Client connected & MTU update requested");
   }
   void onDisconnect(BLEServer *pServer) {
     deviceConnected = false;
     Serial.println("❌ BLE Client disconnected");
   }
 };
+
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
-    // In Core 3.x, getValue() returns an Arduino String
     String rxValue = pCharacteristic->getValue(); 
     
     if (rxValue.length() > 0) {
@@ -91,9 +93,7 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
       Serial.println();
 
       // Forward raw bytes to the GNSS module
-      GPS_Serial.write((const uint8_t*)rxValue.c_str(), rxValue.length());
-      
-      // ... rest of your response logic stays the same ...
+      GPS_Serial.write((const uint8_t*)rxValue.c_str(), rxValue.length());      
       unsigned long start = millis();
       const unsigned long timeout = 250; 
       std::vector<uint8_t> resp;
@@ -113,7 +113,6 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
 };
 
 // --- UBX Packet Construction Helpers ---
-// Explicit overloads to avoid template parsing issues on some toolchains
 void writeLittleEndian(uint8_t* buffer, int offset, uint32_t value) { memcpy(buffer + offset, &value, 4); }
 void writeLittleEndian(uint8_t* buffer, int offset, int32_t value)  { memcpy(buffer + offset, &value, 4); }
 void writeLittleEndian(uint8_t* buffer, int offset, uint16_t value) { memcpy(buffer + offset, &value, 2); }
@@ -292,13 +291,11 @@ void setup() {
   pCharacteristicRx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
   pService->start();
-// --- Device Information Service ---
+  // --- Device Information Service ---
   BLEService *pDeviceInfo = pServer->createService("0000180a-0000-1000-8000-00805f9b34fb");
-
   // Model
   BLECharacteristic *pModel = pDeviceInfo->createCharacteristic("00002a24-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
   pModel->setValue("RaceBox Mini");
-
   // Serial number (last 10 digits of device name)
   BLECharacteristic *pSerial = pDeviceInfo->createCharacteristic("00002a25-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
   if (deviceName.length() >= 10) {
@@ -306,23 +303,19 @@ void setup() {
   } else {
       pSerial->setValue("0000000000");
   }
-
   // Firmware revision
   BLECharacteristic *pFirm = pDeviceInfo->createCharacteristic("00002a26-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
   pFirm->setValue("3.3");
-
   // Hardware revision
   BLECharacteristic *pHardware = pDeviceInfo->createCharacteristic("00002a27-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
   pHardware->setValue("1");
-
   // Manufacturer
   BLECharacteristic *pManufacturer = pDeviceInfo->createCharacteristic("00002a29-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
   pManufacturer->setValue("RaceBox");
-
   pDeviceInfo->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
-  // Advertise Device Information Service as well to help official apps discover the device
+  // Advertise Device Information Service to help official apps discover the device
   pAdvertising->addServiceUUID("0000180a-0000-1000-8000-00805f9b34fb");
   pAdvertising->setScanResponse(true);
   BLEDevice::startAdvertising();
@@ -349,16 +342,7 @@ void loop() {
         // Now that we're sending a packet, read the acceloromter
         sensors_event_t a, g, temp;
         mpu.getEvent(&a, &g, &temp);
-        // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
-
-        // // Convert gyro to centi-deg/sec
-        // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
-
+    
         // Convert accelerometer to milli-g
         int16_t gX = kf_ax.updateEstimate(a.acceleration.x) * 1000.0 / 9.80665;
         int16_t gY = kf_ay.updateEstimate(a.acceleration.y) * 1000.0 / 9.80665;
@@ -404,7 +388,6 @@ void loop() {
             fixStatusFlagsRacebox |= (1 << 0); // Bit 0: valid fix
         }
 
-        // Add this line to set Bit 5 for valid heading using getHeadVehValid()
         if (myGNSS.getHeadVehValid()) { // Use the confirmed function to check for valid heading
             fixStatusFlagsRacebox |= (1 << 5); // Bit 5: valid heading (as per RaceBox Protocol)
         }
@@ -442,7 +425,7 @@ void loop() {
         }
         writeLittleEndian(payload, 66, latLonFlags);
 
-        // Offset 67: Battery status (1 byte) - report 100%
+        // Offset 67: Battery status (1 byte) - report 100% to avoid low battery warnings
         writeLittleEndian(payload, 67, (uint8_t)100);
 
         writeLittleEndian(payload, 68, gX);
@@ -452,7 +435,6 @@ void loop() {
         writeLittleEndian(payload, 76, rY);
         writeLittleEndian(payload, 78, rZ);
 
-
         // Wrap in UBX (standard RaceBox header and checksum)
         packet[0] = 0xB5;
         packet[1] = 0x62;
@@ -461,8 +443,7 @@ void loop() {
         packet[4] = 80;   // Payload size 
         packet[5] = 0;
         memcpy(packet + 6, payload, 80);
-        uint8_t ckA, ckB;
-        // Use the correct Class (0xFF) and ID (0x01) for checksum calculation as per RaceBox protocol 
+        uint8_t ckA, ckB; 
         calculateChecksum(payload, 80, 0xFF, 0x01, &ckA, &ckB);
         packet[86] = ckA;
         packet[87] = ckB;
