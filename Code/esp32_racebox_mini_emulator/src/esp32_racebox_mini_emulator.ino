@@ -78,24 +78,24 @@ class MyServerCallbacks : public BLEServerCallbacks {
     Serial.println("❌ BLE Client disconnected");
   }
 };
-
 class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
-    std::string rxValue = pCharacteristic->getValue();
-    if (!rxValue.empty()) {
+    // In Core 3.x, getValue() returns an Arduino String
+    String rxValue = pCharacteristic->getValue(); 
+    
+    if (rxValue.length() > 0) {
       Serial.print("📨 Received BLE command: ");
-      for (unsigned char c : rxValue) Serial.printf("0x%02X ", (uint8_t)c);
+      for (size_t i = 0; i < rxValue.length(); i++) {
+        Serial.printf("0x%02X ", (uint8_t)rxValue[i]);
+      }
       Serial.println();
 
-      // Forward raw UBX/command bytes to the GNSS module over UART
-      GPS_Serial.write((const uint8_t*)rxValue.data(), rxValue.size());
-      Serial.print("➡ Forwarded to GNSS: ");
-      for (unsigned char c : rxValue) Serial.printf("0x%02X ", (uint8_t)c);
-      Serial.println();
-
-      // Wait briefly for any immediate response from GNSS and forward it back over BLE
+      // Forward raw bytes to the GNSS module
+      GPS_Serial.write((const uint8_t*)rxValue.c_str(), rxValue.length());
+      
+      // ... rest of your response logic stays the same ...
       unsigned long start = millis();
-      const unsigned long timeout = 250; // ms
+      const unsigned long timeout = 250; 
       std::vector<uint8_t> resp;
       while (millis() - start < timeout) {
         while (GPS_Serial.available()) {
@@ -104,16 +104,9 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
         if (!resp.empty()) break;
         delay(10);
       }
-      if (!resp.empty()) {
-        Serial.print("⬅ Response from GNSS: ");
-        for (uint8_t b : resp) Serial.printf("0x%02X ", b);
-        Serial.println();
-
-        // Send raw response bytes back to the BLE client (no additional framing)
-        if (pCharacteristicTx) {
-          pCharacteristicTx->setValue(resp.data(), resp.size());
-          pCharacteristicTx->notify();
-        }
+      if (!resp.empty() && pCharacteristicTx) {
+        pCharacteristicTx->setValue(resp.data(), resp.size());
+        pCharacteristicTx->notify();
       }
     }
   }
@@ -299,24 +292,33 @@ void setup() {
   pCharacteristicRx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
   pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
   pService->start();
-
-  // --- Device Information Service (optional but expected by some official apps) ---
+// --- Device Information Service ---
   BLEService *pDeviceInfo = pServer->createService("0000180a-0000-1000-8000-00805f9b34fb");
-  // Model (e.g. "RaceBox Mini")
+
+  // Model
   BLECharacteristic *pModel = pDeviceInfo->createCharacteristic("00002a24-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
-  pModel->setValue(std::string("RaceBox Mini"));
+  pModel->setValue("RaceBox Mini");
+
   // Serial number (last 10 digits of device name)
   BLECharacteristic *pSerial = pDeviceInfo->createCharacteristic("00002a25-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
-  if (deviceName.length() >= 10) pSerial->setValue(std::string(deviceName.substring(deviceName.length() - 10).c_str())); else pSerial->setValue(std::string("0000000000"));
+  if (deviceName.length() >= 10) {
+      pSerial->setValue(deviceName.substring(deviceName.length() - 10));
+  } else {
+      pSerial->setValue("0000000000");
+  }
+
   // Firmware revision
   BLECharacteristic *pFirm = pDeviceInfo->createCharacteristic("00002a26-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
-  pFirm->setValue(std::string("3.3"));
+  pFirm->setValue("3.3");
+
   // Hardware revision
   BLECharacteristic *pHardware = pDeviceInfo->createCharacteristic("00002a27-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
-  pHardware->setValue(std::string("1"));
+  pHardware->setValue("1");
+
   // Manufacturer
   BLECharacteristic *pManufacturer = pDeviceInfo->createCharacteristic("00002a29-0000-1000-8000-00805f9b34fb", BLECharacteristic::PROPERTY_READ);
-  pManufacturer->setValue(std::string("RaceBox"));
+  pManufacturer->setValue("RaceBox");
+
   pDeviceInfo->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
