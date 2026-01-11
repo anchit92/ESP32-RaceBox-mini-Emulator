@@ -161,16 +161,18 @@ Once the firmware is uploaded and the device is powered on:
 
 1.  The ESP32 will start advertising a BLE service named "**RaceBox Mini 0123456789**"(the devicename you customized before uploading the firmware).
 2.  Use a compatible BLE client application to connect to the device.
-    - Tested compatible apps, theoretically anything that supports a racebox mini should work (except the RaceBox app).
+    - Tested compatible apps, theoretically anything that supports a racebox mini should work.
         - Solostorm (Android)
         - RaceChrono (Android)
         - RaceChrono Pro (Android/iOS)
         - NMEAconnect (iOS)
         - AutoX DL(iOS)
+        - RaceBox(Android/iOS Limited Compatibility, everything except configuring the device appears to be working.) 
 
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
