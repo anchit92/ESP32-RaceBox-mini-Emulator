@@ -91,40 +91,6 @@ public:
   }
 };
 
-class GnssCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
-// public:
-//     void onWrite(NimBLECharacteristic* pCharacteristic) {
-//         std::string value = pCharacteristic->getValue();
-//         if (value.size() != sizeof(GnssConfig)) {
-//             Serial.println("❌ Invalid GNSS config length");
-//             return;
-//         }
-
-//         // Copy received bytes into gnssConfig
-//         memcpy(&gnssConfig, value.data(), sizeof(GnssConfig));
-//         Serial.println("📨 GNSS config updated via BLE");
-
-//         // Apply immediately
-//         applyGnssConfig();
-
-//         // Persist to SPIFFS
-//         saveGnssConfig(gnssConfig);
-
-//         // Send back updated GNSS config to BLE client
-//         if (pCharacteristic->getProperties() & NIMBLE_PROPERTY::NOTIFY) {
-//             pCharacteristic->setValue((uint8_t*)&gnssConfig, sizeof(GnssConfig));
-//             pCharacteristic->notify();
-//             Serial.println("📤 GNSS config sent back via BLE notification");
-//         }
-//     }
-
-//     void onRead(NimBLECharacteristic* pCharacteristic) {
-//         pCharacteristic->setValue((uint8_t*)&gnssConfig, sizeof(GnssConfig));
-//         Serial.println("📤 GNSS config read via BLE");
-//     }
-};
-
-
 // --- UBX Packet Construction Helpers ---
 void writeLittleEndian(uint8_t* buffer, int offset, uint32_t value) { memcpy(buffer + offset, &value, 4); }
 void writeLittleEndian(uint8_t* buffer, int offset, int32_t value)  { memcpy(buffer + offset, &value, 4); }
@@ -319,7 +285,7 @@ void setup() {
       RACEBOX_CHARACTERISTIC_GNSS_UUID,
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
   );
-  pCharacteristicGnss->setCallbacks(new GnssCharacteristicCallbacks());
+  // pCharacteristicGnss->setCallbacks(new GnssCharacteristicCallbacks());
   // Start Racebox service
   pRaceboxService->start();
 
@@ -387,7 +353,7 @@ void setup() {
 
   // Start advertising
   pAdvertising->start();
-  Serial.println("📡 NimBLE advertising started.");
+  Serial.println("📡 BLE advertising started.");
   lastGpsRateCheckTime = millis();
 
 }
