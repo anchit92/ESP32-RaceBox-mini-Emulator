@@ -2,25 +2,9 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
-#include <NimBLEDevice.h>
+#include "NimBLEDevice.h"
 #include <string>
 #include <vector>
-#include <Arduino.h>
-
-// Helper conversions to produce a std::string from common BLE getValue() return types
-static inline std::string toStdString(const std::string &s) { return s; }
-static inline std::string toStdString(const String &s) { return std::string(s.c_str(), s.length()); }
-static inline std::string toStdString(const std::vector<uint8_t> &v) { return std::string(v.begin(), v.end()); }
-
-// Use byte-array setValue overload which is present in both Arduino IDE BLE and PlatformIO BLE
-static inline void setCharacteristicValue(NimBLECharacteristic *ch, const std::string &s) {
-  if (!ch) return;
-  ch->setValue((const uint8_t*)s.data(), s.size());
-}
-static inline void setCharacteristicValue(NimBLECharacteristic *ch, const String &s) {
-  if (!ch) return;
-  ch->setValue((const uint8_t*)s.c_str(), s.length());
-}
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -62,10 +46,12 @@ float filtered_gx = 0, filtered_gy = 0, filtered_gz = 0;
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_RX_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_TX_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* const RACEBOX_CHARACTERISTIC_GNSS_UUID = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
 
-NimBLEServer *pServer = NULL;
-NimBLECharacteristic *pCharacteristicTx = NULL;
-NimBLECharacteristic *pCharacteristicRx = NULL;
+NimBLEServer* pServer = NULL;
+NimBLECharacteristic* pCharacteristicTx = NULL;
+NimBLECharacteristic* pCharacteristicRx = NULL;
+NimBLECharacteristic* pCharacteristicGnss = nullptr;
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
@@ -80,49 +66,64 @@ unsigned int gnssUpdateCount = 0;
 
 // --- BLE Callbacks ---
 class MyServerCallbacks : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer *pServer) {
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     deviceConnected = true;
-    // Request a larger MTU to fit an 88-byte packet + headers in one go
-    // pServer->updatePeerMTU(pServer->getConnId(), 128); 
-    Serial.println("✅ BLE Client connected & MTU update requested");
+    uint16_t mtu = pServer->getPeerMTU(connInfo.getConnHandle());
+    Serial.printf("✅ BLE Client connected, negotiated MTU = %d\n", mtu);
   }
-  void onDisconnect(NimBLEServer *pServer) {
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     deviceConnected = false;
     Serial.println("❌ BLE Client disconnected");
   }
 };
 
-class MyCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
-  void onWrite(NimBLECharacteristic *pCharacteristic) {
-    // auto raw = pCharacteristic->getValue();
-    std::string rxValue = pCharacteristic->getValue();
 
+class MyCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+public:
+  void onWrite(NimBLECharacteristic* pCharacteristic) {
+    std::string rxValue = pCharacteristic->getValue();
     if (!rxValue.empty()) {
       Serial.print("📨 Received BLE command: ");
-      for (size_t i = 0; i < rxValue.size(); i++) {
-        Serial.printf("0x%02X ", (uint8_t)rxValue[i]);
-      }
+      for (uint8_t c : rxValue)
+        Serial.printf("0x%02X ", c);
       Serial.println();
-
-      // Forward raw bytes to the GNSS module
-      GPS_Serial.write((const uint8_t*)rxValue.data(), rxValue.size());
-      unsigned long start = millis();
-      const unsigned long timeout = 250;
-      std::vector<uint8_t> resp;
-      while (millis() - start < timeout) {
-        while (GPS_Serial.available()) {
-          resp.push_back((uint8_t)GPS_Serial.read());
-        }
-        if (!resp.empty()) break;
-        delay(10);
-      }
-      if (!resp.empty() && pCharacteristicTx) {
-        pCharacteristicTx->setValue(resp.data(), resp.size());
-        pCharacteristicTx->notify();
-      }
     }
   }
 };
+
+class GnssCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+// public:
+//     void onWrite(NimBLECharacteristic* pCharacteristic) {
+//         std::string value = pCharacteristic->getValue();
+//         if (value.size() != sizeof(GnssConfig)) {
+//             Serial.println("❌ Invalid GNSS config length");
+//             return;
+//         }
+
+//         // Copy received bytes into gnssConfig
+//         memcpy(&gnssConfig, value.data(), sizeof(GnssConfig));
+//         Serial.println("📨 GNSS config updated via BLE");
+
+//         // Apply immediately
+//         applyGnssConfig();
+
+//         // Persist to SPIFFS
+//         saveGnssConfig(gnssConfig);
+
+//         // Send back updated GNSS config to BLE client
+//         if (pCharacteristic->getProperties() & NIMBLE_PROPERTY::NOTIFY) {
+//             pCharacteristic->setValue((uint8_t*)&gnssConfig, sizeof(GnssConfig));
+//             pCharacteristic->notify();
+//             Serial.println("📤 GNSS config sent back via BLE notification");
+//         }
+//     }
+
+//     void onRead(NimBLECharacteristic* pCharacteristic) {
+//         pCharacteristic->setValue((uint8_t*)&gnssConfig, sizeof(GnssConfig));
+//         Serial.println("📤 GNSS config read via BLE");
+//     }
+};
+
 
 // --- UBX Packet Construction Helpers ---
 void writeLittleEndian(uint8_t* buffer, int offset, uint32_t value) { memcpy(buffer + offset, &value, 4); }
@@ -294,46 +295,101 @@ void setup() {
 
   // --- BLE Setup ---
   NimBLEDevice::init(deviceName.c_str());
+
+  // Create Server
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  NimBLEService *pService = pServer->createService(RACEBOX_SERVICE_UUID);
-  pCharacteristicTx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_TX_UUID, NIMBLE_PROPERTY::NOTIFY);
-  // pCharacteristicTx->addDescriptor(new NimBLE2902());
-  pCharacteristicRx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_RX_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
-  pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
-  pService->start();
-  // --- Device Information Service ---
-  NimBLEService *pDeviceInfo = pServer->createService("0000180a-0000-1000-8000-00805f9b34fb");
-  // Model
-  NimBLECharacteristic *pModel = pDeviceInfo->createCharacteristic("00002a24-0000-1000-8000-00805f9b34fb", NIMBLE_PROPERTY::READ);
-  pModel->setValue("RaceBox Mini");
-  // Serial number (last 10 digits of device name)
-  NimBLECharacteristic *pSerial = pDeviceInfo->createCharacteristic("00002a25-0000-1000-8000-00805f9b34fb", NIMBLE_PROPERTY::READ);
-    if (deviceName.length() >= 10) {
-      setCharacteristicValue(pSerial, toStdString(deviceName.substring(deviceName.length() - 10)));
-    } else {
-      pSerial->setValue("0000000000");
-    }
-  // Firmware revision
-  NimBLECharacteristic *pFirm = pDeviceInfo->createCharacteristic("00002a26-0000-1000-8000-00805f9b34fb", NIMBLE_PROPERTY::READ);
-  pFirm->setValue("3.3");
-  // Hardware revision
-  NimBLECharacteristic *pHardware = pDeviceInfo->createCharacteristic("00002a27-0000-1000-8000-00805f9b34fb", NIMBLE_PROPERTY::READ);
-  pHardware->setValue("1");
-  // Manufacturer
-  NimBLECharacteristic *pManufacturer = pDeviceInfo->createCharacteristic("00002a29-0000-1000-8000-00805f9b34fb", NIMBLE_PROPERTY::READ);
-  pManufacturer->setValue("RaceBox");
-  pDeviceInfo->start();
-  NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
-  // Advertise Device Information Service to help official apps discover the device
-  pAdvertising->addServiceUUID("0000180a-0000-1000-8000-00805f9b34fb");
-  // pAdvertising->setScanResponse(true);
-  NimBLEDevice::startAdvertising();
-  Serial.println("📡 BLE advertising started.");
+  // ------Main RaceBox Service------
+  NimBLEService* pRaceboxService = pServer->createService(RACEBOX_SERVICE_UUID);
 
+  // TX (Notify)
+  pCharacteristicTx = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_TX_UUID,
+      NIMBLE_PROPERTY::NOTIFY
+  );
+  // RX (Write and Write Without Response)
+  pCharacteristicRx = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_RX_UUID,
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+  );
+  pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
+  // GNSS Config Characteristic
+  pCharacteristicGnss = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_GNSS_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  pCharacteristicGnss->setCallbacks(new GnssCharacteristicCallbacks());
+  // Start Racebox service
+  pRaceboxService->start();
+
+  // ------Device Information Service (DIS)------
+  NimBLEService* pDeviceInfo = pServer->createService("0000180A-0000-1000-8000-00805F9B34FB");
+
+  // Model Number String
+  NimBLECharacteristic* pModel = pDeviceInfo->createCharacteristic(
+      "00002A24-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pModel->setValue("RaceBox Mini");
+
+  // Serial Number String
+  NimBLECharacteristic* pSerial = pDeviceInfo->createCharacteristic(
+      "00002A25-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pSerial->setValue(
+      deviceName.length() >= 10 ?
+      deviceName.substring(deviceName.length() - 10) :
+      "0000000000"
+  );
+
+  // Firmware Revision
+  NimBLECharacteristic* pFirm = pDeviceInfo->createCharacteristic(
+      "00002A26-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pFirm->setValue("3.3");
+
+  // Hardware Revision
+  NimBLECharacteristic* pHardware = pDeviceInfo->createCharacteristic(
+      "00002A27-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pHardware->setValue("1");
+
+  // Manufacturer Name
+  NimBLECharacteristic* pManufacturer = pDeviceInfo->createCharacteristic(
+      "00002A29-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pManufacturer->setValue("RaceBox");
+
+  // Start Device Information Service
+  pDeviceInfo->start();
+
+  // ------Advertising Setup------
+  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+
+  // Primary advertising packet
+  NimBLEAdvertisementData advData;
+  advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  advData.addServiceUUID(NimBLEUUID(RACEBOX_SERVICE_UUID));     // Primary RB service
+  advData.addServiceUUID("0000180A-0000-1000-8000-00805F9B34FB"); // DIS
+  advData.addTxPower();                                    
+
+  // Scan response packet (contains name)
+  NimBLEAdvertisementData scanRespData;
+  scanRespData.setName(deviceName.c_str());
+
+  pAdvertising->setAdvertisementData(advData);
+  pAdvertising->setScanResponseData(scanRespData);
+
+  // Start advertising
+  pAdvertising->start();
+  Serial.println("📡 NimBLE advertising started.");
   lastGpsRateCheckTime = millis();
+
 }
 
 void loop() {
