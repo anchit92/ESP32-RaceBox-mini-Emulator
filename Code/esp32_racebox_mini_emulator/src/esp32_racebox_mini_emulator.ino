@@ -3,8 +3,6 @@
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include "NimBLEDevice.h"
-#include <string>
-#include <vector>
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -22,10 +20,10 @@ HardwareSerial GPS_Serial(2);
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
 #define ENABLE_GNSS_GPS
-#define ENABLE_GNSS_GALILEO
+// #define ENABLE_GNSS_GALILEO
 // #define ENABLE_GNSS_GLONASS
 // #define ENABLE_GNSS_BEIDOU
-// #define ENABLE_GNSS_SBAS
+#define ENABLE_GNSS_SBAS
 // #define ENABLE_GNSS_QZSS
 
 const String deviceName = "RaceBox Mini 0123456789";
@@ -47,11 +45,14 @@ const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_RX_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_TX_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_GNSS_UUID = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* const RACEBOX_NMEA_CHAR_UUID = "6E400005-B5A3-F393-E0A9-E50E24DCCA9E"; 
+
 
 NimBLEServer* pServer = NULL;
 NimBLECharacteristic* pCharacteristicTx = NULL;
 NimBLECharacteristic* pCharacteristicRx = NULL;
 NimBLECharacteristic* pCharacteristicGnss = nullptr;
+
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
@@ -68,12 +69,12 @@ unsigned int gnssUpdateCount = 0;
 class MyServerCallbacks : public NimBLEServerCallbacks {
   void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     deviceConnected = true;
-    uint16_t mtu = pServer->getPeerMTU(connInfo.getConnHandle());
-    Serial.printf("✅ BLE Client connected, negotiated MTU = %d\n", mtu);
+    Serial.printf("✅ BLE Client connected!\n");
   }
+
   void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     deviceConnected = false;
-    Serial.println("❌ BLE Client disconnected");
+    Serial.printf("❌ BLE Client disconnected. Reason: %d\n", reason);
   }
 };
 
@@ -261,12 +262,12 @@ void setup() {
 
   // --- BLE Setup ---
   NimBLEDevice::init(deviceName.c_str());
-
+  NimBLEDevice::setMTU(BLE_ATT_MTU_MAX);
   // Create Server
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  // ------Main RaceBox Service------
+  // --- Main RaceBox Service --- 
   NimBLEService* pRaceboxService = pServer->createService(RACEBOX_SERVICE_UUID);
 
   // TX (Notify)
@@ -285,11 +286,9 @@ void setup() {
       RACEBOX_CHARACTERISTIC_GNSS_UUID,
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
   );
-  // pCharacteristicGnss->setCallbacks(new GnssCharacteristicCallbacks());
-  // Start Racebox service
   pRaceboxService->start();
 
-  // ------Device Information Service (DIS)------
+  // --- Device Information Service (DIS) --- 
   NimBLEService* pDeviceInfo = pServer->createService("0000180A-0000-1000-8000-00805F9B34FB");
 
   // Model Number String
@@ -334,7 +333,7 @@ void setup() {
   // Start Device Information Service
   pDeviceInfo->start();
 
-  // ------Advertising Setup------
+  // --- Advertising Setup --- 
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
 
   // Primary advertising packet
@@ -343,7 +342,7 @@ void setup() {
   advData.addServiceUUID(NimBLEUUID(RACEBOX_SERVICE_UUID));     // Primary RB service
   advData.addServiceUUID("0000180A-0000-1000-8000-00805F9B34FB"); // DIS
   advData.addTxPower();                                    
-
+  
   // Scan response packet (contains name)
   NimBLEAdvertisementData scanRespData;
   scanRespData.setName(deviceName.c_str());
@@ -357,6 +356,7 @@ void setup() {
   lastGpsRateCheckTime = millis();
 
 }
+
 
 void loop() {
   myGNSS.checkUblox(); // Required to keep GNSS data flowing
@@ -507,6 +507,15 @@ void loop() {
       uint8_t fix = 0;
       uint32_t hAcc = 0;
       double lat = 0.0, lon = 0.0;
+      uint16_t currentMTU = 0;
+      std::string peerAddr = "None";
+
+      if (deviceConnected) {
+          // Get info for the first connected client
+          NimBLEConnInfo peerInfo = pServer->getPeerInfo(0); 
+          currentMTU = peerInfo.getMTU();
+          peerAddr = peerInfo.getAddress().toString();
+      }
       if (myGNSS.packetUBXNAVPVT != NULL) {
         sats = myGNSS.packetUBXNAVPVT->data.numSV;
         fix = myGNSS.packetUBXNAVPVT->data.fixType;
@@ -514,8 +523,8 @@ void loop() {
         lat = myGNSS.packetUBXNAVPVT->data.lat * 1e-7;
         lon = myGNSS.packetUBXNAVPVT->data.lon * 1e-7;
       }
-      Serial.printf("BLE Packet Rate: %.2f Hz | GNSS Update Rate: %.2f Hz | SVs: %u | Fix: %u | HAcc: %u mm | Lat: %.7f Lon: %.7f\n",
-                    bleRate, gnssRate, sats, fix, hAcc, lat, lon);
+      Serial.printf("BLE: %.2f Hz | GNSS: %.2f Hz | MTU: %d | Peer: %s | SVs: %u | Fix: %u | HAcc: %u mm | Lat: %.7f Lon: %.7f\n", 
+                    bleRate, gnssRate, currentMTU, peerAddr.c_str(), sats, fix, hAcc, lat, lon);
       gpsUpdateCount = 0;
       gnssUpdateCount = 0;
       lastGpsRateCheckTime = now;
