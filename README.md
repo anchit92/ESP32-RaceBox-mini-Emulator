@@ -110,13 +110,19 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
   https://app.qzss.go.jp/GNSSView/gnssview.html This could help you pick which constellations to pick.
 
 * **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
-  Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
 
-  ✅ Correct:
-  String deviceName = "RaceBox Mini 6942069420";
+    * **ID Limit:** If you intend to use this with the RaceBox App, The number must be **less than 4000000000**. The RaceBox app will not connect to devices with an ID of 4000000000 or higher.
 
-  ❌ Incorrect – Do not change the prefix:
-  String deviceName = "MY GPS 6942069420";
+    * **Prefix Requirement:** Make sure to **keep** the `"RaceBox Mini "` prefix unchanged—only change the numbers.
+
+      ✅ **Correct:**
+      `String deviceName = "RaceBox Mini 3999999999";`
+    
+      ❌ **Incorrect (Prefix changed):**
+      `String deviceName = "MY GPS 6942069420";`
+    
+      ❌ **Incorrect (Number too high):**
+      `String deviceName = "RaceBox Mini 4000000000";`
 
 
 ### 6. Upload the Firmware
@@ -171,6 +177,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
