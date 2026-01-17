@@ -19,9 +19,7 @@
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
 // --- Enable GNSS constellations ---
-// The specific constellations available depend on your u-blox module 
-// and how many you can turn on depend on your u-blox module 
-// Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
+// The specific constellations available and how many you can turn ondepend on your u-blox module 
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
 #define ENABLE_GNSS_GPS
@@ -31,7 +29,23 @@ HardwareSerial GPS_Serial(2);
 // #define ENABLE_GNSS_SBAS
 // #define ENABLE_GNSS_QZSS
 
-const String deviceName = "RaceBox Mini 0123456789";
+constexpr const char* rawDeviceName = "RaceBox Mini 0123456789";
+
+constexpr unsigned long MAX_ALLOWED = 3999999999;
+
+constexpr unsigned long parseSuffix(const char* name) {
+    unsigned long val = 0;
+    // The suffix starts at index 13 (after "RaceBox Mini ")
+    for (int i = 13; i < 23; ++i) {
+        val = val * 10 + (name[i] - '0');
+    }
+    return val;
+}
+
+static_assert(parseSuffix(rawDeviceName) <= MAX_ALLOWED, 
+              "ERROR: RaceBox Mini number cannot exceed 3999999999 for compatibility with the official RaceBox App");
+
+const String deviceName = rawDeviceName;
 
 Adafruit_MPU6050 mpu;
 
