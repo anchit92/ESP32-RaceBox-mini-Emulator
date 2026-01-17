@@ -92,7 +92,6 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Adafruit MPU6050
     - Adafruit Unified Sensor
     - SparkFun u-blox GNSS Arduino Library (ensure it's version 2)
-    - SimpleKalmanFilter
 
 ### 4. Open the Sketch: 
 - Open the esp32_racebox_mini_emulator.ino in the Arduino IDE.
@@ -177,6 +176,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
