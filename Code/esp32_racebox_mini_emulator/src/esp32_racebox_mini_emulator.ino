@@ -47,6 +47,8 @@ static_assert(parseSuffix(rawDeviceName) <= MAX_ALLOWED,
 
 const String deviceName = rawDeviceName;
 
+const int OnboardledPin = 2;
+
 Adafruit_MPU6050 mpu;
 
 // --- Smoothing Configuration ---
@@ -85,10 +87,12 @@ class MyServerCallbacks : public BLEServerCallbacks {
     deviceConnected = true;
     // Request a larger MTU to fit an 88-byte packet + headers in one go
     pServer->updatePeerMTU(pServer->getConnId(), 128); 
+    digitalWrite(OnboardledPin, HIGH);
     Serial.println("✅ BLE Client connected & MTU update requested");
   }
   void onDisconnect(BLEServer *pServer) {
     deviceConnected = false;
+    digitalWrite(OnboardledPin, LOW);
     Serial.println("❌ BLE Client disconnected");
   }
 };
@@ -175,6 +179,7 @@ void resetGpsBaudRate() {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(OnboardledPin, OUTPUT);
   if (!mpu.begin()) {
     Serial.println("❌ Failed to find MPU6050 chip");
     while (1) delay(100);
@@ -321,6 +326,16 @@ void setup() {
 
 void loop() {
   myGNSS.checkUblox(); // Required to keep GNSS data flowing
+  // LED Blink Logic
+  if (!deviceConnected) {
+    static unsigned long lastBlinkMs = 0;
+    if (millis() - lastBlinkMs > 500) {
+      lastBlinkMs = millis();
+      digitalWrite(OnboardledPin, !digitalRead(OnboardledPin));
+    }
+  } else {
+    digitalWrite(OnboardledPin, HIGH);
+  }
   if (myGNSS.getPVT()) {
     static uint32_t lastITOW = 0;
     uint32_t currentITOW = myGNSS.packetUBXNAVPVT->data.iTOW;
