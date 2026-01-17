@@ -19,7 +19,7 @@
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
 // --- Enable GNSS constellations ---
-// The specific constellations available and how many you can turn ondepend on your u-blox module 
+// The specific constellations available and how many you can turn on depend on your u-blox module 
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
 #define ENABLE_GNSS_GPS
@@ -103,23 +103,6 @@ class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
         Serial.printf("0x%02X ", (uint8_t)rxValue[i]);
       }
       Serial.println();
-
-      // Forward raw bytes to the GNSS module
-      GPS_Serial.write((const uint8_t*)rxValue.c_str(), rxValue.length());      
-      unsigned long start = millis();
-      const unsigned long timeout = 250; 
-      std::vector<uint8_t> resp;
-      while (millis() - start < timeout) {
-        while (GPS_Serial.available()) {
-          resp.push_back((uint8_t)GPS_Serial.read());
-        }
-        if (!resp.empty()) break;
-        delay(10);
-      }
-      if (!resp.empty() && pCharacteristicTx) {
-        pCharacteristicTx->setValue(resp.data(), resp.size());
-        pCharacteristicTx->notify();
-      }
     }
   }
 };
