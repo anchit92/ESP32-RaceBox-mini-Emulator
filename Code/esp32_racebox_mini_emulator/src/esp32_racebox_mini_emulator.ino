@@ -2,11 +2,7 @@
 #include <Adafruit_Sensor.h>
 #include <Wire.h>
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#include <SimpleKalmanFilter.h>
+#include "NimBLEDevice.h"
 
 // --- GPS Configuration ---
 #define GPS_RX_PIN 16
@@ -30,29 +26,51 @@ HardwareSerial GPS_Serial(2);
 // #define ENABLE_GNSS_SBAS
 // #define ENABLE_GNSS_QZSS
 
-const String deviceName = "RaceBox Mini 0123456789";
+constexpr const char *rawDeviceName = "RaceBox Mini 0123456789";
+
+constexpr unsigned long MAX_ALLOWED = 3999999999;
+
+constexpr unsigned long parseSuffix(const char *name) {
+  unsigned long val = 0;
+  // The suffix starts at index 13 (after "RaceBox Mini ")
+  for (int i = 13; i < 23; ++i) {
+    val = val * 10 + (name[i] - '0');
+  }
+  return val;
+}
+static_assert(parseSuffix(rawDeviceName) <= MAX_ALLOWED,
+              "ERROR: RaceBox Mini number cannot exceed 3999999999 for "
+              "compatibility with the official RaceBox App");
+
+const String deviceName = rawDeviceName;
+
+const int OnboardledPin = 2;
 
 Adafruit_MPU6050 mpu;
-// Kalman filters for accelerometer (x, y, z)
-SimpleKalmanFilter kf_ax(1.0, 1.0, 0.99);
-SimpleKalmanFilter kf_ay(1.0, 1.0, 0.99);
-SimpleKalmanFilter kf_az(1.0, 1.0, 0.99);
 
-// Kalman filters for gyroscope (x, y, z)
-SimpleKalmanFilter kf_gx(1.0, 1.0, 0.99);
-SimpleKalmanFilter kf_gy(1.0, 1.0, 0.99);
-SimpleKalmanFilter kf_gz(1.0, 1.0, 0.99);
-
-
+// --- Smoothing Configuration ---
+// alpha = 1.0: No filtering (raw data)
+// alpha = 0.5: 50% current reading, 50% previous (moderate)
+// alpha = 0.8: Very snappy, just kills high-frequency "buzz"
+float accelAlpha = 0.8; 
+float gyroAlpha = 0.9; 
+// Storage for the filtered values
+float filtered_ax = 0, filtered_ay = 0, filtered_az = 0;
+float filtered_gx = 0, filtered_gy = 0, filtered_gz = 0;
 
 // --- BLE Configuration ---
 const char* const RACEBOX_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_RX_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 const char* const RACEBOX_CHARACTERISTIC_TX_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* const RACEBOX_CHARACTERISTIC_GNSS_UUID = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
+const char* const RACEBOX_NMEA_CHAR_UUID = "6E400005-B5A3-F393-E0A9-E50E24DCCA9E"; 
 
-BLEServer *pServer = NULL;
-BLECharacteristic *pCharacteristicTx = NULL;
-BLECharacteristic *pCharacteristicRx = NULL;
+
+NimBLEServer* pServer = NULL;
+NimBLECharacteristic* pCharacteristicTx = NULL;
+NimBLECharacteristic* pCharacteristicRx = NULL;
+NimBLECharacteristic* pCharacteristicGnss = nullptr;
+
 bool deviceConnected = false;
 bool oldDeviceConnected = false;
 
@@ -66,34 +84,41 @@ unsigned int gnssUpdateCount = 0;
 
 
 // --- BLE Callbacks ---
-class MyServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *pServer) {
+class MyServerCallbacks : public NimBLEServerCallbacks {
+  void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
     deviceConnected = true;
-    Serial.println("✅ BLE Client connected");
+    digitalWrite(OnboardledPin, HIGH);
+    Serial.printf("✅ BLE Client connected!\n");
   }
-  void onDisconnect(BLEServer *pServer) {
+
+  void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
     deviceConnected = false;
-    Serial.println("❌ BLE Client disconnected");
+    digitalWrite(OnboardledPin, LOW);
+    Serial.printf("❌ BLE Client disconnected. Reason: %d\n", reason);
   }
 };
 
-class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
-  void onWrite(BLECharacteristic *pCharacteristic) {
-    String rxValue = pCharacteristic->getValue();
-    if (rxValue.length() > 0) {
+
+class MyCharacteristicCallbacks : public NimBLECharacteristicCallbacks {
+public:
+  void onWrite(NimBLECharacteristic* pCharacteristic) {
+    std::string rxValue = pCharacteristic->getValue();
+    if (!rxValue.empty()) {
       Serial.print("📨 Received BLE command: ");
-      for (char c : rxValue)
-        Serial.printf("0x%02X ", (uint8_t)c);
+      for (uint8_t c : rxValue)
+        Serial.printf("0x%02X ", c);
       Serial.println();
     }
   }
 };
 
 // --- UBX Packet Construction Helpers ---
-template <typename T>
-void writeLittleEndian(uint8_t* buffer, int offset, T value) {
-  memcpy(buffer + offset, &value, sizeof(T));
-}
+void writeLittleEndian(uint8_t* buffer, int offset, uint32_t value) { memcpy(buffer + offset, &value, 4); }
+void writeLittleEndian(uint8_t* buffer, int offset, int32_t value)  { memcpy(buffer + offset, &value, 4); }
+void writeLittleEndian(uint8_t* buffer, int offset, uint16_t value) { memcpy(buffer + offset, &value, 2); }
+void writeLittleEndian(uint8_t* buffer, int offset, int16_t value)  { memcpy(buffer + offset, &value, 2); }
+void writeLittleEndian(uint8_t* buffer, int offset, uint8_t value)  { buffer[offset] = value; }
+void writeLittleEndian(uint8_t* buffer, int offset, int8_t value)   { buffer[offset] = (uint8_t)value; }
 
 void calculateChecksum(uint8_t* payload, uint16_t len, uint8_t cls, uint8_t id, uint8_t* ckA, uint8_t* ckB) {
   *ckA = *ckB = 0;
@@ -155,6 +180,7 @@ void resetGpsBaudRate() {
 
 void setup() {
   Serial.begin(115200);
+  pinMode(OnboardledPin, OUTPUT);
   if (!mpu.begin()) {
     Serial.println("❌ Failed to find MPU6050 chip");
     while (1) delay(100);
@@ -256,27 +282,116 @@ void setup() {
   #endif
 
   // --- BLE Setup ---
-  BLEDevice::init(deviceName.c_str());
-  pServer = BLEDevice::createServer();
+  NimBLEDevice::init(deviceName.c_str());
+  NimBLEDevice::setMTU(BLE_ATT_MTU_MAX);
+  // Create Server
+  pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-  BLEService *pService = pServer->createService(RACEBOX_SERVICE_UUID);
-  pCharacteristicTx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_TX_UUID, BLECharacteristic::PROPERTY_NOTIFY);
-  pCharacteristicTx->addDescriptor(new BLE2902());
-  pCharacteristicRx = pService->createCharacteristic(RACEBOX_CHARACTERISTIC_RX_UUID, BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+  // --- Main RaceBox Service --- 
+  NimBLEService* pRaceboxService = pServer->createService(RACEBOX_SERVICE_UUID);
+
+  // TX (Notify)
+  pCharacteristicTx = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_TX_UUID,
+      NIMBLE_PROPERTY::NOTIFY
+  );
+  // RX (Write and Write Without Response)
+  pCharacteristicRx = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_RX_UUID,
+      NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR
+  );
   pCharacteristicRx->setCallbacks(new MyCharacteristicCallbacks());
+  // GNSS Config Characteristic
+  pCharacteristicGnss = pRaceboxService->createCharacteristic(
+      RACEBOX_CHARACTERISTIC_GNSS_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE
+  );
+  pRaceboxService->start();
 
-  pService->start();
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
-  BLEDevice::startAdvertising();
+  // --- Device Information Service (DIS) --- 
+  NimBLEService* pDeviceInfo = pServer->createService("0000180A-0000-1000-8000-00805F9B34FB");
+
+  // Model Number String
+  NimBLECharacteristic* pModel = pDeviceInfo->createCharacteristic(
+      "00002A24-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pModel->setValue("RaceBox Mini");
+
+  // Serial Number String
+  NimBLECharacteristic* pSerial = pDeviceInfo->createCharacteristic(
+      "00002A25-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pSerial->setValue(
+      deviceName.length() >= 10 ?
+      deviceName.substring(deviceName.length() - 10) :
+      "0000000000"
+  );
+
+  // Firmware Revision
+  NimBLECharacteristic* pFirm = pDeviceInfo->createCharacteristic(
+      "00002A26-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pFirm->setValue("3.3");
+
+  // Hardware Revision
+  NimBLECharacteristic* pHardware = pDeviceInfo->createCharacteristic(
+      "00002A27-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pHardware->setValue("1");
+
+  // Manufacturer Name
+  NimBLECharacteristic* pManufacturer = pDeviceInfo->createCharacteristic(
+      "00002A29-0000-1000-8000-00805F9B34FB",
+      NIMBLE_PROPERTY::READ
+  );
+  pManufacturer->setValue("RaceBox");
+
+  // Start Device Information Service
+  pDeviceInfo->start();
+
+  // --- Advertising Setup --- 
+  NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+
+  // Primary advertising packet
+  NimBLEAdvertisementData advData;
+  advData.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  advData.addServiceUUID(NimBLEUUID(RACEBOX_SERVICE_UUID));     // Primary RB service
+  advData.addServiceUUID("0000180A-0000-1000-8000-00805F9B34FB"); // DIS
+  advData.addTxPower();                                    
+  
+  // Scan response packet (contains name)
+  NimBLEAdvertisementData scanRespData;
+  scanRespData.setName(deviceName.c_str());
+
+  pAdvertising->setAdvertisementData(advData);
+  pAdvertising->setScanResponseData(scanRespData);
+
+  // Start advertising
+  pAdvertising->start();
   Serial.println("📡 BLE advertising started.");
-
   lastGpsRateCheckTime = millis();
+
 }
+
 
 void loop() {
   myGNSS.checkUblox(); // Required to keep GNSS data flowing
+  // LED Blink Logic
+  if (!deviceConnected) {
+    static unsigned long lastBlinkMs = 0;
+    if (millis() - lastBlinkMs > 500) {
+      lastBlinkMs = millis();
+      digitalWrite(OnboardledPin, !digitalRead(OnboardledPin));
+    }
+  } else {
+    digitalWrite(OnboardledPin, HIGH);
+  }
+
   if (myGNSS.getPVT()) {
     static uint32_t lastITOW = 0;
     uint32_t currentITOW = myGNSS.packetUBXNAVPVT->data.iTOW;
@@ -290,28 +405,28 @@ void loop() {
         lastPacketSendTime = now;
         gpsUpdateCount++;
 
-        // Now that we're sending a packet, read the acceloromter
+        // Now that we're sending a packet, read the accelerometer
         sensors_event_t a, g, temp;
         mpu.getEvent(&a, &g, &temp);
-        // // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
-        // int16_t gX = a.acceleration.x * 1000.0 / 9.80665;
-        // int16_t gY = a.acceleration.y * 1000.0 / 9.80665;
-        // int16_t gZ = a.acceleration.z * 1000.0 / 9.80665;
 
-        // // Convert gyro to centi-deg/sec
-        // int16_t rX = g.gyro.x * 180.0 / M_PI * 100.0;
-        // int16_t rY = g.gyro.y * 180.0 / M_PI * 100.0;
-        // int16_t rZ = g.gyro.z * 180.0 / M_PI * 100.0;
+        // Apply Exponential Moving Average (Complementary Filter logic)
+        filtered_ax = (accelAlpha * a.acceleration.x) + ((1.0 - accelAlpha) * filtered_ax);
+        filtered_ay = (accelAlpha * a.acceleration.y) + ((1.0 - accelAlpha) * filtered_ay);
+        filtered_az = (accelAlpha * a.acceleration.z) + ((1.0 - accelAlpha) * filtered_az);
 
-        // Convert accelerometer to milli-g
-        int16_t gX = kf_ax.updateEstimate(a.acceleration.x) * 1000.0 / 9.80665;
-        int16_t gY = kf_ay.updateEstimate(a.acceleration.y) * 1000.0 / 9.80665;
-        int16_t gZ = kf_az.updateEstimate(a.acceleration.z) * 1000.0 / 9.80665;
+        filtered_gx = (gyroAlpha * g.gyro.x) + ((1.0 - gyroAlpha) * filtered_gx);
+        filtered_gy = (gyroAlpha * g.gyro.y) + ((1.0 - gyroAlpha) * filtered_gy);
+        filtered_gz = (gyroAlpha * g.gyro.z) + ((1.0 - gyroAlpha) * filtered_gz);
+
+        // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
+        int16_t gX = filtered_ax * 1000.0 / 9.80665;
+        int16_t gY = filtered_ay * 1000.0 / 9.80665;
+        int16_t gZ = filtered_az * 1000.0 / 9.80665;
 
         // Convert gyro to centi-deg/sec
-        int16_t rX = kf_gx.updateEstimate(g.gyro.x) * 180.0 / M_PI * 100.0;
-        int16_t rY = kf_gy.updateEstimate(g.gyro.y) * 180.0 / M_PI * 100.0;
-        int16_t rZ = kf_gz.updateEstimate(g.gyro.z) * 180.0 / M_PI * 100.0;
+        int16_t rX = filtered_gx * 180.0 / M_PI * 100.0;
+        int16_t rY = filtered_gy * 180.0 / M_PI * 100.0;
+        int16_t rZ = filtered_gz * 180.0 / M_PI * 100.0;
 
         uint8_t payload[80] = {0};
         uint8_t packet[88] = {0};
@@ -348,7 +463,6 @@ void loop() {
             fixStatusFlagsRacebox |= (1 << 0); // Bit 0: valid fix
         }
 
-        // Add this line to set Bit 5 for valid heading using getHeadVehValid()
         if (myGNSS.getHeadVehValid()) { // Use the confirmed function to check for valid heading
             fixStatusFlagsRacebox |= (1 << 5); // Bit 5: valid heading (as per RaceBox Protocol)
         }
@@ -386,13 +500,15 @@ void loop() {
         }
         writeLittleEndian(payload, 66, latLonFlags);
 
+        // Offset 67: Battery status (1 byte) - report 100% to avoid low battery warnings
+        writeLittleEndian(payload, 67, (uint8_t)100);
+
         writeLittleEndian(payload, 68, gX);
         writeLittleEndian(payload, 70, gY);
         writeLittleEndian(payload, 72, gZ);
         writeLittleEndian(payload, 74, rX);
         writeLittleEndian(payload, 76, rY);
         writeLittleEndian(payload, 78, rZ);
-
 
         // Wrap in UBX (standard RaceBox header and checksum)
         packet[0] = 0xB5;
@@ -402,15 +518,14 @@ void loop() {
         packet[4] = 80;   // Payload size 
         packet[5] = 0;
         memcpy(packet + 6, payload, 80);
-        uint8_t ckA, ckB;
-        // Use the correct Class (0xFF) and ID (0x01) for checksum calculation as per RaceBox protocol 
+        uint8_t ckA, ckB; 
         calculateChecksum(payload, 80, 0xFF, 0x01, &ckA, &ckB);
         packet[86] = ckA;
         packet[87] = ckB;
 
         pCharacteristicTx->setValue(packet, 88);
         pCharacteristicTx->notify();
-        delay(20);
+        delay(10);
       }
     }
 
@@ -419,7 +534,29 @@ void loop() {
     if ((now - lastGpsRateCheckTime) >= GPS_RATE_REPORT_INTERVAL_MS) {
       float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
       float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
-      Serial.printf("BLE Packet Rate: %.2f Hz | GNSS Update Rate: %.2f Hz\n", bleRate, gnssRate);
+      // Additional satellite info for debugging: number of satellites, fix type, horizontal accuracy, and lat/lon
+      uint8_t sats = 0;
+      uint8_t fix = 0;
+      uint32_t hAcc = 0;
+      double lat = 0.0, lon = 0.0;
+      uint16_t currentMTU = 0;
+      std::string peerAddr = "None";
+
+      if (deviceConnected) {
+          // Get info for the first connected client
+          NimBLEConnInfo peerInfo = pServer->getPeerInfo(0); 
+          currentMTU = peerInfo.getMTU();
+          peerAddr = peerInfo.getAddress().toString();
+      }
+      if (myGNSS.packetUBXNAVPVT != NULL) {
+        sats = myGNSS.packetUBXNAVPVT->data.numSV;
+        fix = myGNSS.packetUBXNAVPVT->data.fixType;
+        hAcc = myGNSS.packetUBXNAVPVT->data.hAcc;
+        lat = myGNSS.packetUBXNAVPVT->data.lat * 1e-7;
+        lon = myGNSS.packetUBXNAVPVT->data.lon * 1e-7;
+      }
+      Serial.printf("BLE: %.2f Hz | GNSS: %.2f Hz | MTU: %d | Peer: %s | SVs: %u | Fix: %u | HAcc: %u mm | Lat: %.7f Lon: %.7f\n", 
+                    bleRate, gnssRate, currentMTU, peerAddr.c_str(), sats, fix, hAcc, lat, lon);
       gpsUpdateCount = 0;
       gnssUpdateCount = 0;
       lastGpsRateCheckTime = now;

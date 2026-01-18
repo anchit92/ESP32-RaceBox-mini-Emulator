@@ -1,0 +1,26 @@
+# Ignore PlatformIO build artifacts and library deps for this project
+/.pio/
+/.pioenvs/
+/.piolibcache/
+/.pio/build/
+/.pio/libdeps/
+/.pio/envs/
+
+# Build outputs
+*.elf
+*.bin
+*.hex
+*.map
+
+# VS Code
+/.vscode/
+
+# Serial monitor lock files
+*.lock
+
+# MacOS
+.DS_Store
+
+# Temp files
+*.tmp
+*.swp
