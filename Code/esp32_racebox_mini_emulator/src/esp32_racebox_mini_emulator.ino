@@ -427,9 +427,6 @@ void loop() {
         lastPacketSendTime = now;
         gpsUpdateCount++;
 
-        // Now that we're sending a packet, read the accelerometer
-
-
         // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
         int16_t gX = filtered_ax * 1000.0 / 9.80665;
         int16_t gY = filtered_ay * 1000.0 / 9.80665;
@@ -537,7 +534,7 @@ void loop() {
 
         pCharacteristicTx->setValue(packet, 88);
         pCharacteristicTx->notify();
-        delay(10);
+        delay(5);
       }
 
     }
