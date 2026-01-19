@@ -14,8 +14,7 @@
 SFE_UBLOX_GNSS myGNSS;
 HardwareSerial GPS_Serial(2);
 // --- Enable GNSS constellations ---
-// The specific constellations available depend on your u-blox module 
-// and how many you can turn on depend on your u-blox module 
+// The specific constellations available and how many you can turn on depend on your u-blox module 
 // Common ones are GPS, Galileo, GLONASS, BeiDou, QZSS, SBAS.
 // check this out for which constellations to enable https://app.qzss.go.jp/GNSSView/gnssview.html
 
@@ -47,13 +46,13 @@ const String deviceName = rawDeviceName;
 const int OnboardledPin = 2;
 
 Adafruit_MPU6050 mpu;
-
+const unsigned long AccelSampleInterval = 10; // 10ms = 100Hz
 // --- Smoothing Configuration ---
 // alpha = 1.0: No filtering (raw data)
 // alpha = 0.5: 50% current reading, 50% previous (moderate)
 // alpha = 0.8: Very snappy, just kills high-frequency "buzz"
 float accelAlpha = 0.8; 
-float gyroAlpha = 0.9; 
+float gyroAlpha = 0.8; 
 // Storage for the filtered values
 float filtered_ax = 0, filtered_ay = 0, filtered_az = 0;
 float filtered_gx = 0, filtered_gy = 0, filtered_gz = 0;
@@ -188,6 +187,13 @@ void setup() {
   mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
   mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  // Initialize filters with the first real reading so they don't start at zero
+  filtered_ax = a.acceleration.x;
+  filtered_ay = a.acceleration.y;
+  filtered_az = a.acceleration.z;
 
   GPS_Serial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
   if (!myGNSS.begin(GPS_Serial)) {
@@ -381,6 +387,24 @@ void setup() {
 
 void loop() {
   myGNSS.checkUblox(); // Required to keep GNSS data flowing
+  static unsigned long lastAccelReadMs = 0;
+  // Update Accelrometer readings at fixed interval
+  if (millis() - lastAccelReadMs >= AccelSampleInterval) {
+    lastAccelReadMs += AccelSampleInterval; // Strict timing grid
+      lastAccelReadMs = millis();
+      sensors_event_t a, g, temp;
+      mpu.getEvent(&a, &g, &temp);
+
+      // Apply Exponential Moving Average (Complementary Filter logic)
+      filtered_ax = (accelAlpha * a.acceleration.x) + ((1.0 - accelAlpha) * filtered_ax);
+      filtered_ay = (accelAlpha * a.acceleration.y) + ((1.0 - accelAlpha) * filtered_ay);
+      filtered_az = (accelAlpha * a.acceleration.z) + ((1.0 - accelAlpha) * filtered_az);
+
+      filtered_gx = (gyroAlpha * g.gyro.x) + ((1.0 - gyroAlpha) * filtered_gx);
+      filtered_gy = (gyroAlpha * g.gyro.y) + ((1.0 - gyroAlpha) * filtered_gy);
+      filtered_gz = (gyroAlpha * g.gyro.z) + ((1.0 - gyroAlpha) * filtered_gz);
+  }
+
   // LED Blink Logic
   if (!deviceConnected) {
     static unsigned long lastBlinkMs = 0;
@@ -388,8 +412,6 @@ void loop() {
       lastBlinkMs = millis();
       digitalWrite(OnboardledPin, !digitalRead(OnboardledPin));
     }
-  } else {
-    digitalWrite(OnboardledPin, HIGH);
   }
 
   if (myGNSS.getPVT()) {
@@ -406,17 +428,7 @@ void loop() {
         gpsUpdateCount++;
 
         // Now that we're sending a packet, read the accelerometer
-        sensors_event_t a, g, temp;
-        mpu.getEvent(&a, &g, &temp);
 
-        // Apply Exponential Moving Average (Complementary Filter logic)
-        filtered_ax = (accelAlpha * a.acceleration.x) + ((1.0 - accelAlpha) * filtered_ax);
-        filtered_ay = (accelAlpha * a.acceleration.y) + ((1.0 - accelAlpha) * filtered_ay);
-        filtered_az = (accelAlpha * a.acceleration.z) + ((1.0 - accelAlpha) * filtered_az);
-
-        filtered_gx = (gyroAlpha * g.gyro.x) + ((1.0 - gyroAlpha) * filtered_gx);
-        filtered_gy = (gyroAlpha * g.gyro.y) + ((1.0 - gyroAlpha) * filtered_gy);
-        filtered_gz = (gyroAlpha * g.gyro.z) + ((1.0 - gyroAlpha) * filtered_gz);
 
         // Convert accelerometer to milli-g (1g = 9.80665 m/s^2)
         int16_t gX = filtered_ax * 1000.0 / 9.80665;
@@ -527,6 +539,7 @@ void loop() {
         pCharacteristicTx->notify();
         delay(10);
       }
+
     }
 
     // Report packet send rate
