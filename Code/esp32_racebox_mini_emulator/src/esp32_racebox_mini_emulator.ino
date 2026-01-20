@@ -290,6 +290,8 @@ void setup() {
   // --- BLE Setup ---
   NimBLEDevice::init(deviceName.c_str());
   NimBLEDevice::setMTU(BLE_ATT_MTU_MAX);
+  NimBLEDevice::setPower(9);
+
   // Create Server
   pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
