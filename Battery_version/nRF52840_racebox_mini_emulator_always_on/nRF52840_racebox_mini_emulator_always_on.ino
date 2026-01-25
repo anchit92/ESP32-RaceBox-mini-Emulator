@@ -4,85 +4,94 @@
 #include <Wire.h>
 #include <bluefruit.h>
 
-// --- GPS Configuration ---
-// On XIAO nRF52840:
-// Serial1 TX is Pin D6 -> Connect to GPS RX
-// Serial1 RX is Pin D7 -> Connect to GPS TX
-#define GPS_BAUD 115200
-#define FACTORY_GPS_BAUD 9600
-#define MAX_NAVIGATION_RATE 25
+// ============================================================================
+// --- USER CUSTOMIZATION  ---
+// ============================================================================
 
-SFE_UBLOX_GNSS myGNSS;
+// --- BLE Branding ---
+#define SERIAL_NUM "0123456789"                // The unique 10-digit serial
 
-// --- IMU Configuration (Onboard LSM6DS3) ---
-// XIAO Sense IMU is on I2C address 0x6A
-LSM6DS3 IMU(I2C_MODE, 0x6A);
-#define int1Pin PIN_LSM6DS3TR_C_INT1
+// (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
+#define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
+#define MANUFACTURER "RaceBox"
+#define FIRMWARE_VER "3.3"
 
-// --- Power Management Configuration ---
-#define GPS_EN_PIN D1
-const unsigned long GPS_HOT_TIMEOUT =
-    900000; // 15 minutes - keep GPS hot after disconnect
-const unsigned long DEEP_SLEEP_TIMEOUT =
-    604800000; // 7 days - long term storage safety net
-const bool ENABLE_DEEP_SLEEP = false;
-#define FAST_ADV_INTERVAL 160 // 100ms
-#define ECO_ADV_INTERVAL 1600 // 1000ms
+// --- GPS Performance ---
+#define MAX_NAVIGATION_RATE 25  // 25Hz: Max rate for RaceBox Mini protocol
+#define GPS_BAUD 115200         // High speed for 25Hz data
+#define FACTORY_GPS_BAUD 9600   // Default for cold modules
+#define GPS_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
-// --- Battery Monitoring ---
-#define PIN_VBAT (32)        // D32 battery voltage
-#define PIN_VBAT_ENABLE (14) // D14 LOW:read enable
-#define PIN_HICHG (22)       // D22 charge current setting LOW:100mA HIGH:50mA
-#define PIN_CHG (23)         // D23 charge indicator LOW:charge HIGH:no charge
+// --- Power & Efficiency ---
+#define GPS_HOT_TIMEOUT_MS 900000 // 15 Minutes (Stay powered after disconnect)
+#define DEEP_SLEEP_DAYS 7         // Safety net before absolute shutdown
+#define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
+#define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
+#define ECO_ADV_INTERVAL 1600     // 1000ms: Low power while idle
 
-// --- GNSS Constellations ---
+// --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
 #define ENABLE_GNSS_GALILEO
 #define ENABLE_GNSS_GLONASS
 #define ENABLE_GNSS_BEIDOU
-// #define ENABLE_GNSS_SBAS
-// #define ENABLE_GNSS_QZSS
 
-const char *rawDeviceName = "RaceBox Mini 0123456789";
-const String deviceName = rawDeviceName;
+// ============================================================================
+// ---  HARDWARE MAPPINGS ---
+// ============================================================================
 
-// LED Configuration (Blue LED on XIAO)
-const int OnboardledPin = LED_BLUE;
+#define GPS_EN_PIN D1      // GPS Power Enable Rail
+#define PIN_VBAT_ENABLE 14 // Battery Read Enable
+#define PIN_HICHG 22       // Charge Speed (LOW=100mA)
+#define PIN_CHG 23         // Charge Indicator (LOW=Charging)
+#define ACCEL_INT_PIN PIN_LSM6DS3TR_C_INT1
 
-const unsigned long AccelSampleInterval = 10; // 10ms = 100Hz
+// ============================================================================
+// ---  GLOBAL SYSTEM STATE ---
+// ============================================================================
+
+SFE_UBLOX_GNSS myGNSS;
+LSM6DS3 IMU(I2C_MODE, 0x6A);
+
+// System Flags
+bool deviceConnected = false;
+bool gpsEnabled = false;
+bool imuEnabled = false;
+bool pendingConfig = false;
 bool lastChargingState = false;
-// --- Smoothing Configuration ---
-float accelAlpha = 0.8;
-float gyroAlpha = 0.8;
-// Storage for the filtered values
+uint8_t currentBatteryPercentage = 100;
+
+// Timing Trackers
+unsigned long lastDisconnectTime = 0;
+unsigned long lastActivityTime = 0;
+unsigned long lastGpsRateCheckTime = 0;
+unsigned int gpsUpdateCount = 0;
+unsigned int gnssUpdateCount = 0;
+
+// Filter/IMU State
+const unsigned long AccelSampleInterval = 10; // 100Hz
+float accelAlpha = 0.8, gyroAlpha = 0.8;
 float filtered_ax = 0, filtered_ay = 0, filtered_az = 0;
 float filtered_gx = 0, filtered_gy = 0, filtered_gz = 0;
 
-// --- BLE UUIDs ---
-// Bluefruit handles UUIDs as objects
+// BLE Core Objects
 const uint8_t RACEBOX_SERVICE_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
                                         0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
                                         0x01, 0x00, 0x40, 0x6E};
+const uint8_t RACEBOX_TX_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
+                                   0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
+                                   0x03, 0x00, 0x40, 0x6E};
+const uint8_t RACEBOX_RX_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
+                                   0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
+                                   0x02, 0x00, 0x40, 0x6E};
+const uint8_t RACEBOX_GNSS_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
+                                     0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
+                                     0x04, 0x00, 0x40, 0x6E};
 
-const uint8_t RACEBOX_CHAR_TX_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
-                                        0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
-                                        0x03, 0x00, 0x40, 0x6E};
-
-const uint8_t RACEBOX_CHAR_RX_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
-                                        0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
-                                        0x02, 0x00, 0x40, 0x6E};
-
-const uint8_t RACEBOX_CHAR_GNSS_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
-                                          0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5,
-                                          0x04, 0x00, 0x40, 0x6E};
-
-// BLE Services & Characteristics
 BLEService rbService(RACEBOX_SERVICE_UUID);
-BLECharacteristic rbTx(RACEBOX_CHAR_TX_UUID);
-BLECharacteristic rbRx(RACEBOX_CHAR_RX_UUID);
-BLECharacteristic rbGnss(RACEBOX_CHAR_GNSS_UUID);
+BLECharacteristic rbTx(RACEBOX_TX_UUID);
+BLECharacteristic rbRx(RACEBOX_RX_UUID);
+BLECharacteristic rbGnss(RACEBOX_GNSS_UUID);
 
-// Device Info Service
 BLEService disService(UUID16_SVC_DEVICE_INFORMATION);
 BLECharacteristic disModel(UUID16_CHR_MODEL_NUMBER_STRING);
 BLECharacteristic disSerial(UUID16_CHR_SERIAL_NUMBER_STRING);
@@ -90,21 +99,9 @@ BLECharacteristic disFirmware(UUID16_CHR_FIRMWARE_REVISION_STRING);
 BLECharacteristic disHardware(UUID16_CHR_HARDWARE_REVISION_STRING);
 BLECharacteristic disManuf(UUID16_CHR_MANUFACTURER_NAME_STRING);
 
-bool deviceConnected = false;
-bool gpsEnabled = false;
-bool imuEnabled = false;
-bool pendingConfig = false; // Flag to request sensor refresh in main loop
-unsigned long lastDisconnectTime = 0;
-unsigned long lastActivityTime = 0; // Tracks last activity for deep sleep
+const int OnboardledPin = LED_BLUE;
 
-// --- Packet Timing ---
-unsigned long lastPacketSendTime = 0;
-unsigned long lastGpsRateCheckTime = 0;
-unsigned int gpsUpdateCount = 0;
-const unsigned long GPS_RATE_REPORT_INTERVAL_MS = 5000;
-unsigned int gnssUpdateCount = 0;
-
-// --- Helper Functions ---
+// --- Helper Utilities ---
 void writeLittleEndian(uint8_t *buffer, int offset, uint32_t value) {
   memcpy(buffer + offset, &value, 4);
 }
@@ -148,8 +145,157 @@ float getBatteryVoltage() {
   // Voltage = ADC_Result * (3.6 / 1024) * 2
   unsigned int adcCount = analogRead(PIN_VBAT);
   float voltage = adcCount * (3.6 / 1024.0) * 2.0;
-  // digitalWrite(PIN_VBAT_ENABLE, HIGH);
+  digitalWrite(PIN_VBAT_ENABLE, HIGH);
   return voltage;
+}
+
+// ============================================================================
+// ---  SENSOR PROCESSING MODULES ---
+// ============================================================================
+
+// Assemble and transmit the proprietary RaceBox Mini protocol packet
+void sendRaceboxPacket() {
+  if (!deviceConnected || myGNSS.packetUBXNAVPVT == NULL)
+    return;
+
+  uint8_t payload[80] = {0};
+  uint8_t packet[88] = {0};
+  auto *data = &myGNSS.packetUBXNAVPVT->data;
+
+  // Time and Resolution
+  writeLittleEndian(payload, 0, data->iTOW);
+  writeLittleEndian(payload, 4, data->year);
+  writeLittleEndian(payload, 6, data->month);
+  writeLittleEndian(payload, 7, data->day);
+  writeLittleEndian(payload, 8, data->hour);
+  writeLittleEndian(payload, 9, data->min);
+  writeLittleEndian(payload, 10, data->sec);
+
+  // Status and Accuracy
+  uint8_t val = 0;
+  if (data->valid.bits.validDate)
+    val |= (1 << 0);
+  if (data->valid.bits.validTime)
+    val |= (1 << 1);
+  if (data->valid.bits.fullyResolved)
+    val |= (1 << 2);
+  writeLittleEndian(payload, 11, val);
+  writeLittleEndian(payload, 12, data->tAcc);
+  writeLittleEndian(payload, 16, data->nano);
+  writeLittleEndian(payload, 20, data->fixType);
+
+  // Fix and Info Flags
+  uint8_t fixFlags = 0;
+  if (data->fixType == 3)
+    fixFlags |= (1 << 0);
+  if (myGNSS.getHeadVehValid())
+    fixFlags |= (1 << 5);
+  writeLittleEndian(payload, 21, fixFlags);
+
+  uint8_t dtFlags = 0;
+  if (data->valid.bits.validTime)
+    dtFlags |= (1 << 5);
+  if (data->valid.bits.validDate)
+    dtFlags |= (1 << 6);
+  if (data->valid.bits.validTime && data->valid.bits.fullyResolved)
+    dtFlags |= (1 << 7);
+  writeLittleEndian(payload, 22, dtFlags);
+
+  // Position, Speed, and Heading
+  writeLittleEndian(payload, 23, data->numSV);
+  writeLittleEndian(payload, 24, (int32_t)data->lon);
+  writeLittleEndian(payload, 28, (int32_t)data->lat);
+  writeLittleEndian(payload, 32, (int32_t)data->height);
+  writeLittleEndian(payload, 36, (int32_t)data->hMSL);
+  writeLittleEndian(payload, 40, (uint32_t)data->hAcc);
+  writeLittleEndian(payload, 44, (uint32_t)data->vAcc);
+  writeLittleEndian(payload, 48, (int32_t)data->gSpeed);
+  writeLittleEndian(payload, 52, (int32_t)data->headMot);
+  writeLittleEndian(payload, 56, (uint32_t)data->sAcc);
+  writeLittleEndian(payload, 60, (uint32_t)data->headAcc);
+  writeLittleEndian(payload, 64, (uint16_t)data->pDOP);
+
+  // Fix Quality and Misc
+  if (data->fixType < 2)
+    writeLittleEndian(payload, 66, (uint8_t)(1 << 0));
+
+  uint8_t batPct = currentBatteryPercentage & 0x7F;
+  if (isCharging())
+    batPct |= 0x80;
+  writeLittleEndian(payload, 67, batPct);
+
+  // Physical Sensors (Smoothed IMU)
+  writeLittleEndian(payload, 68, (int16_t)(filtered_ax * 1000.0));
+  writeLittleEndian(payload, 70, (int16_t)(filtered_ay * 1000.0));
+  writeLittleEndian(payload, 72, (int16_t)(filtered_az * 1000.0));
+  writeLittleEndian(payload, 74, (int16_t)(filtered_gx * 100.0));
+  writeLittleEndian(payload, 76, (int16_t)(filtered_gy * 100.0));
+  writeLittleEndian(payload, 78, (int16_t)(filtered_gz * 100.0));
+
+  // Protocol Wrapper
+  packet[0] = 0xB5;
+  packet[1] = 0x62;
+  packet[2] = 0xFF;
+  packet[3] = 0x01;
+  packet[4] = 80;
+  packet[5] = 0;
+  memcpy(packet + 6, payload, 80);
+
+  uint8_t ckA, ckB;
+  calculateChecksum(payload, 80, 0xFF, 0x01, &ckA, &ckB);
+  packet[86] = ckA;
+  packet[87] = ckB;
+
+  if (rbTx.notify(packet, 88))
+    gpsUpdateCount++;
+}
+
+// Background polling and data routing for the u-blox module
+void processGNSS() {
+  if (!gpsEnabled)
+    return;
+  myGNSS.checkUblox();
+
+  if (myGNSS.getPVT()) {
+    static uint32_t lastITOW = 0;
+    uint32_t currentITOW = myGNSS.packetUBXNAVPVT->data.iTOW;
+    updateFixLEDs(myGNSS.packetUBXNAVPVT->data.fixType);
+
+    if (currentITOW != lastITOW) {
+      lastITOW = currentITOW;
+      gnssUpdateCount++;
+      sendRaceboxPacket();
+    }
+  }
+
+  // Backup Recovery: Ensure background processing during data stalls
+  static unsigned long lastValidData = 0;
+  if (myGNSS.getPVT())
+    lastValidData = millis();
+  if (deviceConnected && (millis() - lastValidData > 2000))
+    myGNSS.checkUblox();
+}
+
+// IMU Sampling and EMA (Exponential Moving Average) Smoothing
+void processIMU() {
+  if (!imuEnabled)
+    return;
+  static unsigned long lastRead = 0;
+  if (millis() - lastRead < AccelSampleInterval)
+    return;
+  lastRead = millis();
+
+  float ax = IMU.readFloatAccelX(), ay = IMU.readFloatAccelY(),
+        az = IMU.readFloatAccelZ();
+  float gx = IMU.readFloatGyroX(), gy = IMU.readFloatGyroY(),
+        gz = IMU.readFloatGyroZ();
+
+  filtered_ax = (accelAlpha * ax) + (1.0 - accelAlpha) * filtered_ax;
+  filtered_ay = (accelAlpha * ay) + (1.0 - accelAlpha) * filtered_ay;
+  filtered_az = (accelAlpha * az) + (1.0 - accelAlpha) * filtered_az;
+  filtered_gx = (gyroAlpha * gx) + (1.0 - gyroAlpha) * filtered_gx;
+  filtered_gy = (gyroAlpha * gy) + (1.0 - gyroAlpha) * filtered_gy;
+  filtered_gz = (gyroAlpha * gz) + (1.0 - gyroAlpha) * filtered_gz;
 }
 
 uint8_t getBatteryPercentage() {
@@ -158,137 +304,210 @@ uint8_t getBatteryPercentage() {
     return 100;
   if (v <= 3.5)
     return 0;
-  // Simple linear mapping (4.2V - 3.5V)
   return (uint8_t)((v - 3.5) / (4.2 - 3.5) * 100.0);
 }
 bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
 
-// --- Sensor Management ---
+// ============================================================================
+// ---  POWER & SYSTEM MANAGEMENT ---
+// ============================================================================
+
 bool configureGPS() {
-  if (pendingConfig) {
-    Serial.println("⚙️ Syncing GPS Settings...");
+  if (!pendingConfig)
+    return false;
+  Serial.println("⚙️ Syncing GPS Settings...");
+  Serial1.begin(GPS_BAUD);
 
-    // 1. Ensure Serial1 is ready
-    Serial1.begin(GPS_BAUD);
-
-    // 2. Try to detect module with retries
-    bool detected = false;
-    for (int i = 0; i < 3; i++) {
-      if (myGNSS.begin(Serial1)) {
-        detected = true;
-        break;
-      }
-      delay(20);
+  bool detected = false;
+  for (int i = 0; i < 3; i++) {
+    if (myGNSS.begin(Serial1)) {
+      detected = true;
+      break;
     }
+    delay(20);
+  }
 
-    // 3. Fallback to 9600 to upgrade baud
-    if (!detected) {
-      Serial.println("⚠️ GPS not at 115200, checking 9600...");
-      Serial1.begin(FACTORY_GPS_BAUD);
-      delay(50);
-      if (myGNSS.begin(Serial1)) {
-        myGNSS.setSerialRate(GPS_BAUD);
-        delay(100);
-        Serial1.begin(GPS_BAUD);
-        if (!myGNSS.begin(Serial1))
-          return false;
-      } else {
+  if (!detected) {
+    Serial1.begin(FACTORY_GPS_BAUD);
+    delay(50);
+    if (myGNSS.begin(Serial1)) {
+      myGNSS.setSerialRate(GPS_BAUD);
+      delay(100);
+      Serial1.begin(GPS_BAUD);
+      if (!myGNSS.begin(Serial1))
         return false;
-      }
-    }
+    } else
+      return false;
+  }
 
-    myGNSS.setPortOutput(COM_PORT_UART1, COM_TYPE_UBX);
-    myGNSS.setAutoPVT(true);
-    myGNSS.setDynamicModel(DYN_MODEL_AUTOMOTIVE);
-    myGNSS.setNavigationFrequency(MAX_NAVIGATION_RATE);
+  myGNSS.setPortOutput(COM_PORT_UART1, COM_TYPE_UBX);
+  myGNSS.setAutoPVT(true);
+  myGNSS.setDynamicModel(DYN_MODEL_AUTOMOTIVE);
+  myGNSS.setNavigationFrequency(MAX_NAVIGATION_RATE);
 
 #ifdef ENABLE_GNSS_GPS
-    myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
 #endif
 #ifdef ENABLE_GNSS_GALILEO
-    myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
 #endif
 #ifdef ENABLE_GNSS_GLONASS
-    myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
 #endif
 #ifdef ENABLE_GNSS_BEIDOU
-    myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
 #endif
 
-    pendingConfig = false;
-    Serial.println("✅ Configuration complete.");
-    return true;
-  }
-  return false; // Already synced
+  pendingConfig = false;
+  Serial.println("✅ Configuration complete.");
+  return true;
 }
 
 void enableGPS() {
-  if (!gpsEnabled) {
-    Serial.println("🛰️ enableGPS() starting...");
-    digitalWrite(GPS_EN_PIN, HIGH);
-    gpsEnabled = true;
-    delay(100);
-
-    if (!deviceConnected) {
-      Bluefruit.Advertising.stop();
-      Bluefruit.Advertising.setInterval(FAST_ADV_INTERVAL,
-                                        FAST_ADV_INTERVAL + 100);
-      Bluefruit.Advertising.start(0);
-    }
-    Serial.println("✅ enableGPS() finished.");
+  if (gpsEnabled)
+    return;
+  digitalWrite(GPS_EN_PIN, HIGH);
+  gpsEnabled = true;
+  delay(100);
+  if (!deviceConnected) {
+    Bluefruit.Advertising.stop();
+    Bluefruit.Advertising.setInterval(FAST_ADV_INTERVAL,
+                                      FAST_ADV_INTERVAL + 100);
+    Bluefruit.Advertising.start(0);
   }
 }
 
 void disableGPS() {
-  Serial.println("🛰️ disableGPS() starting...");
   pendingConfig = true;
   digitalWrite(GPS_EN_PIN, LOW);
   gpsEnabled = false;
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
-
   if (!deviceConnected) {
     Bluefruit.Advertising.stop();
     Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
     Bluefruit.Advertising.start(0);
   }
-  Serial.println("✅ disableGPS() finished.");
 }
 
 void enableIMU() {
-  if (!imuEnabled) {
-    Serial.println("📊 enableIMU() starting...");
-    IMU.settings.gyroEnabled = 1;
-    IMU.settings.accelEnabled = 1;
-    IMU.settings.accelRange = 2;
-    IMU.settings.gyroRange = 2000;
-
-    if (IMU.begin() != 0) {
-      Serial.println("⚠️ IMU Enable Failed");
-      return;
-    }
-
-    filtered_ax = IMU.readFloatAccelX();
-    filtered_ay = IMU.readFloatAccelY();
-    filtered_az = IMU.readFloatAccelZ();
-    filtered_gx = IMU.readFloatGyroX();
-    filtered_gy = IMU.readFloatGyroY();
-    filtered_gz = IMU.readFloatGyroZ();
-
-    imuEnabled = true;
-    Serial.println("✅ enableIMU() finished.");
-  }
+  if (imuEnabled)
+    return;
+  IMU.settings.gyroEnabled = 1;
+  IMU.settings.accelEnabled = 1;
+  IMU.settings.accelRange = 2;
+  IMU.settings.gyroRange = 2000;
+  if (IMU.begin() != 0)
+    return;
+  imuEnabled = true;
 }
 
 void disableIMU() {
-  if (imuEnabled) {
-    Serial.println("📊 disableIMU() starting...");
-    IMU.settings.gyroEnabled = 0;
-    IMU.settings.accelEnabled = 0;
-    IMU.begin();
-    imuEnabled = false;
-    Serial.println("✅ disableIMU() finished.");
+  if (!imuEnabled)
+    return;
+  IMU.settings.gyroEnabled = 0;
+  IMU.settings.accelEnabled = 0;
+  IMU.begin();
+  imuEnabled = false;
+}
+
+// Manage Charging, Disconnect Timeouts, and Deep Sleep
+void managePower() {
+  bool currentlyCharging = isCharging();
+
+  if (deviceConnected || currentlyCharging) {
+    lastActivityTime = millis();
+    lastDisconnectTime = millis();
+    enableGPS();
+    enableIMU();
+    configureGPS();
+  } else {
+    if (imuEnabled)
+      disableIMU();
   }
+
+  // Hot-State Timeout (Keep GPS active for a window after usage)
+  if (!deviceConnected && gpsEnabled && !currentlyCharging) {
+    if (millis() - lastDisconnectTime > GPS_HOT_TIMEOUT_MS) {
+      Serial.printf("⏰ GPS Hot Timeout Reached. Powering down.\n");
+      disableGPS();
+    }
+  }
+
+  // Deep Sleep Safety Net
+  if (ENABLE_DEEP_SLEEP && !deviceConnected && !currentlyCharging) {
+    if (millis() - lastActivityTime > (DEEP_SLEEP_DAYS * 86400000UL))
+      enterDeepSleep();
+  }
+
+  // Reset charging state trackers
+  if (lastChargingState && !currentlyCharging) {
+    lastActivityTime = millis();
+    if (!deviceConnected)
+      lastDisconnectTime = millis();
+  }
+  lastChargingState = currentlyCharging;
+}
+
+// Smart Recovery Watchdog: Forces re-sync if the 25Hz feed stalls
+void handleWatchdog() {
+  static unsigned long lastValidData = 0;
+  static unsigned long lastConnection = 0;
+  static bool wasConnected = false;
+
+  if (deviceConnected && !wasConnected) {
+    lastConnection = millis();
+    lastValidData = millis();
+  }
+  wasConnected = deviceConnected;
+
+  if (gpsEnabled && myGNSS.getPVT())
+    lastValidData = millis();
+
+  if (deviceConnected && !pendingConfig) {
+    unsigned long stallTime = millis() - lastValidData;
+    unsigned long upTime = millis() - lastConnection;
+
+    // 1. Initial Connection: If data doesn't flow within 1.2s, kickstart sync
+    if (upTime > 1200 && stallTime > 1000) {
+      Serial.println("⚠️ Connection stalled, forcing sync...");
+      pendingConfig = true;
+      lastValidData = millis();
+    }
+    // 2. Steady State: If stream stops for >3s, recover
+    else if (stallTime > 3000) {
+      Serial.println("⚠️ GPS stream stalled, recovering...");
+      pendingConfig = true;
+      lastValidData = millis();
+    }
+  }
+}
+
+// Periodic Status Feed to the Computer
+void reportSystemStats() {
+  if (millis() - lastGpsRateCheckTime < GPS_RATE_REPORT_MS)
+    return;
+
+  currentBatteryPercentage = getBatteryPercentage();
+  float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
+  float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
+
+  Serial.println("--------------------------------------------------");
+  Serial.printf("POWER   | Bat: %d%% | Charging: %s | State: %s\n",
+                currentBatteryPercentage, isCharging() ? "YES ⚡" : "NO 🔋",
+                deviceConnected ? "CONNECTED" : "IDLE");
+
+  if (gpsEnabled && myGNSS.packetUBXNAVPVT) {
+    Serial.printf(
+        "GNSS    | Fast: %.2f Hz | Loop: %.2f Hz | SVs: %u | Fix: %u\n",
+        bleRate, gnssRate, myGNSS.packetUBXNAVPVT->data.numSV,
+        myGNSS.packetUBXNAVPVT->data.fixType);
+  }
+  Serial.println("--------------------------------------------------");
+
+  gpsUpdateCount = 0;
+  gnssUpdateCount = 0;
+  lastGpsRateCheckTime = millis();
 }
 
 // --- LED Fix Status ---
@@ -410,83 +629,63 @@ void enterDeepSleep() {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); // Wait for Serial to stabilize
-  Serial.println("\n\n🚀 SYSTEM RESTART / BOOT");
+  delay(1000);
+  Serial.println("\n\n SYSTEM STARTUP");
+
   pinMode(GPS_EN_PIN, OUTPUT);
-  digitalWrite(GPS_EN_PIN, HIGH); // Power on for initialization
+  digitalWrite(GPS_EN_PIN, HIGH);
   pinMode(11, INPUT_PULLDOWN);
 
   pinMode(PIN_VBAT, INPUT);
   pinMode(PIN_VBAT_ENABLE, OUTPUT);
   pinMode(PIN_HICHG, OUTPUT);
   pinMode(PIN_CHG, INPUT);
+  digitalWrite(PIN_HICHG, LOW);
 
-  Wire.setClock(400000); // Fast I2C for IMU
-
+  Wire.setClock(400000);
   analogReference(AR_DEFAULT);
   analogReadResolution(12);
 
-  gpsEnabled = false; // MUST BE FALSE for enableGPS() to work in setup
-  lastActivityTime = millis();
-  lastDisconnectTime = 0;
-
-  digitalWrite(PIN_HICHG, LOW);
-
   pinMode(OnboardledPin, OUTPUT);
-  digitalWrite(OnboardledPin, HIGH); // Turn off Blue LED initially
+  digitalWrite(OnboardledPin, HIGH);
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
-
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
 
-  // --- IMU Init ---
   if (IMU.begin() != 0) {
-    Serial.println("❌ Failed to find LSM6DS3 chip");
+    Serial.println("❌ IMU Init Failed");
   } else {
-    Serial.println("✅ LSM6DS3 Found!");
     imuEnabled = true;
-    disableIMU(); // Power down after successful init
+    disableIMU();
   }
 
-  // Init filter vars
-  filtered_ax = IMU.readFloatAccelX();
-  filtered_ay = IMU.readFloatAccelY();
-  filtered_az = IMU.readFloatAccelZ();
-
-  // --- BLE PERFORMANCE CONFIGURATION ---
-  // 1. Maximize Bandwidth (Vital for 25Hz)
+  // BLE Configuration
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
-
-  // 2. Init Bluefruit
   Bluefruit.begin();
-  Bluefruit.autoConnLed(false); // SILENCE THE BLINK FOREVER
+  Bluefruit.autoConnLed(false);
   Bluefruit.setTxPower(4);
-  Bluefruit.setName(deviceName.c_str());
+  Bluefruit.setName(DEVICE_NAME);
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
-
-  // 3. Request Fast Connection Interval (7.5ms - 15ms)
-  // This forces the phone to listen much more frequently
   Bluefruit.Periph.setConnInterval(6, 12);
 
-  // --- Service Setup ---
+  // Service Setup
   disService.begin();
   disModel.setProperties(CHR_PROPS_READ);
   disModel.begin();
-  disModel.write("RaceBox Mini");
+  disModel.write(DEVICE_NAME);
   disSerial.setProperties(CHR_PROPS_READ);
   disSerial.begin();
-  disSerial.write("0123456789");
+  disSerial.write(SERIAL_NUM);
   disFirmware.setProperties(CHR_PROPS_READ);
   disFirmware.begin();
-  disFirmware.write("3.3");
+  disFirmware.write(FIRMWARE_VER);
   disManuf.setProperties(CHR_PROPS_READ);
   disManuf.begin();
-  disManuf.write("RaceBox");
+  disManuf.write(MANUFACTURER);
 
   rbService.begin();
-
   rbTx.setProperties(CHR_PROPS_NOTIFY);
   rbTx.setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   rbTx.setFixedLen(88);
@@ -506,315 +705,19 @@ void setup() {
   Bluefruit.Advertising.addService(rbService);
   Bluefruit.Advertising.addService(disService);
   Bluefruit.ScanResponse.addName();
-  Bluefruit.Advertising.restartOnDisconnect(
-      false); // We'll handle this manually
-  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL,
-                                    ECO_ADV_INTERVAL + 200); // Start in Eco
-  Bluefruit.Advertising.setFastTimeout(30);
-  lastActivityTime = 0; // Start at 0 to track first connection
+  Bluefruit.Advertising.restartOnDisconnect(false);
+  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
   Bluefruit.Advertising.start(0);
-  Serial.println("📡 BLE Broadcast started.");
 
-  // Power down sensors until first connection
+  Serial.println("📡 BLE Broadcast Started.");
   disableGPS();
-  disableIMU();
 }
 
 void loop() {
-  static unsigned long loopCount = 0;
-  if (++loopCount % 5000 == 0)
-    Serial.printf("💓 Loop Heartbeat: %lu\n", millis());
-
-  const unsigned long now = millis();
-
-  // --- Background Processing ---
-  if (gpsEnabled)
-    myGNSS.checkUblox();
-
-  // Battery Timing
-  static unsigned long lastBatCheck = 0;
-  static uint8_t currentBatPct = 100;
-
-  // Accelerometer Timing
-  static unsigned long lastAccelReadMs = 0;
-
-  // Performance logic: only read IMU if enabled (connected)
-  if (imuEnabled) {
-    if (millis() - lastAccelReadMs >= AccelSampleInterval) {
-      lastAccelReadMs = millis();
-
-      float ax = IMU.readFloatAccelX();
-      float ay = IMU.readFloatAccelY();
-      float az = IMU.readFloatAccelZ();
-
-      float gx = IMU.readFloatGyroX();
-      float gy = IMU.readFloatGyroY();
-      float gz = IMU.readFloatGyroZ();
-
-      // EMA Filter
-      filtered_ax = (accelAlpha * ax) + ((1.0 - accelAlpha) * filtered_ax);
-      filtered_ay = (accelAlpha * ay) + ((1.0 - accelAlpha) * filtered_ay);
-      filtered_az = (accelAlpha * az) + ((1.0 - accelAlpha) * filtered_az);
-
-      filtered_gx = (gyroAlpha * gx) + ((1.0 - gyroAlpha) * filtered_gx);
-      filtered_gy = (gyroAlpha * gy) + ((1.0 - gyroAlpha) * filtered_gy);
-      filtered_gz = (gyroAlpha * gz) + ((1.0 - gyroAlpha) * filtered_gz);
-    }
-  }
-
-  // GNSS Data Handling - only if enabled
-  bool newPVT = false;
-  if (gpsEnabled && myGNSS.getPVT()) {
-    newPVT = true;
-    static uint32_t lastITOW = 0;
-    uint32_t currentITOW = myGNSS.packetUBXNAVPVT->data.iTOW;
-
-    // Update LEDs based on current fix type
-    updateFixLEDs(myGNSS.packetUBXNAVPVT->data.fixType);
-
-    if (currentITOW != lastITOW) {
-      lastITOW = currentITOW;
-      gnssUpdateCount++;
-
-      if (deviceConnected && myGNSS.packetUBXNAVPVT != NULL) {
-        // --- IMU Unit Conversion for RaceBox Protocol ---
-        int16_t gX = (int16_t)(filtered_ax * 1000.0);
-        int16_t gY = (int16_t)(filtered_ay * 1000.0);
-        int16_t gZ = (int16_t)(filtered_az * 1000.0);
-        int16_t rX = (int16_t)(filtered_gx * 100.0);
-        int16_t rY = (int16_t)(filtered_gy * 100.0);
-        int16_t rZ = (int16_t)(filtered_gz * 100.0);
-
-        uint8_t payload[80] = {0};
-        uint8_t packet[88] = {0};
-
-        writeLittleEndian(payload, 0, myGNSS.packetUBXNAVPVT->data.iTOW);
-        writeLittleEndian(payload, 4, myGNSS.packetUBXNAVPVT->data.year);
-        writeLittleEndian(payload, 6, myGNSS.packetUBXNAVPVT->data.month);
-        writeLittleEndian(payload, 7, myGNSS.packetUBXNAVPVT->data.day);
-        writeLittleEndian(payload, 8, myGNSS.packetUBXNAVPVT->data.hour);
-        writeLittleEndian(payload, 9, myGNSS.packetUBXNAVPVT->data.min);
-        writeLittleEndian(payload, 10, myGNSS.packetUBXNAVPVT->data.sec);
-
-        uint8_t raceboxValidityFlags = 0;
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.validDate)
-          raceboxValidityFlags |= (1 << 0);
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.validTime)
-          raceboxValidityFlags |= (1 << 1);
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.fullyResolved)
-          raceboxValidityFlags |= (1 << 2);
-        writeLittleEndian(payload, 11, raceboxValidityFlags);
-
-        writeLittleEndian(payload, 12, myGNSS.packetUBXNAVPVT->data.tAcc);
-        writeLittleEndian(payload, 16, myGNSS.packetUBXNAVPVT->data.nano);
-        writeLittleEndian(payload, 20, myGNSS.packetUBXNAVPVT->data.fixType);
-
-        uint8_t fixStatusFlagsRacebox = 0;
-        if (myGNSS.packetUBXNAVPVT->data.fixType == 3)
-          fixStatusFlagsRacebox |= (1 << 0);
-        if (myGNSS.getHeadVehValid())
-          fixStatusFlagsRacebox |= (1 << 5);
-        writeLittleEndian(payload, 21, fixStatusFlagsRacebox);
-
-        uint8_t raceboxDateTimeFlags = 0;
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.validTime)
-          raceboxDateTimeFlags |= (1 << 5);
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.validDate)
-          raceboxDateTimeFlags |= (1 << 6);
-        if (myGNSS.packetUBXNAVPVT->data.valid.bits.validTime &&
-            myGNSS.packetUBXNAVPVT->data.valid.bits.fullyResolved)
-          raceboxDateTimeFlags |= (1 << 7);
-        writeLittleEndian(payload, 22, raceboxDateTimeFlags);
-
-        writeLittleEndian(payload, 23, myGNSS.packetUBXNAVPVT->data.numSV);
-        writeLittleEndian(payload, 24, myGNSS.packetUBXNAVPVT->data.lon);
-        writeLittleEndian(payload, 28, myGNSS.packetUBXNAVPVT->data.lat);
-        writeLittleEndian(payload, 32, myGNSS.packetUBXNAVPVT->data.height);
-        writeLittleEndian(payload, 36, myGNSS.packetUBXNAVPVT->data.hMSL);
-        writeLittleEndian(payload, 40, myGNSS.packetUBXNAVPVT->data.hAcc);
-        writeLittleEndian(payload, 44, myGNSS.packetUBXNAVPVT->data.vAcc);
-        writeLittleEndian(payload, 48, myGNSS.packetUBXNAVPVT->data.gSpeed);
-        writeLittleEndian(payload, 52, myGNSS.packetUBXNAVPVT->data.headMot);
-        writeLittleEndian(payload, 56, myGNSS.packetUBXNAVPVT->data.sAcc);
-        writeLittleEndian(payload, 60, myGNSS.packetUBXNAVPVT->data.headAcc);
-        writeLittleEndian(payload, 64, myGNSS.packetUBXNAVPVT->data.pDOP);
-
-        uint8_t latLonFlags = 0;
-        if (myGNSS.packetUBXNAVPVT->data.fixType < 2)
-          latLonFlags |= (1 << 0);
-        writeLittleEndian(payload, 66, latLonFlags);
-
-        if (millis() - lastBatCheck > 5000) {
-          currentBatPct = getBatteryPercentage();
-          lastBatCheck = millis();
-        }
-        uint8_t batteryField = currentBatPct & 0x7F;
-        if (isCharging())
-          batteryField |= 0x80;
-
-        writeLittleEndian(payload, 67, batteryField);
-        writeLittleEndian(payload, 68, gX);
-        writeLittleEndian(payload, 70, gY);
-        writeLittleEndian(payload, 72, gZ);
-        writeLittleEndian(payload, 74, rX);
-        writeLittleEndian(payload, 76, rY);
-        writeLittleEndian(payload, 78, rZ);
-
-        packet[0] = 0xB5;
-        packet[1] = 0x62;
-        packet[2] = 0xFF;
-        packet[3] = 0x01;
-        packet[4] = 80;
-        packet[5] = 0;
-        memcpy(packet + 6, payload, 80);
-        uint8_t ckA, ckB;
-        calculateChecksum(payload, 80, 0xFF, 0x01, &ckA, &ckB);
-        packet[86] = ckA;
-        packet[87] = ckB;
-
-        if (rbTx.notify(packet, 88)) {
-          gpsUpdateCount++;
-        }
-      }
-    }
-  }
-
-  // --- Fast Re-Sync logic ---
-  // If we are connected but don't get data from u-blox, it might be in a bad
-  // state
-  static unsigned long lastUbloxDataTime = 0;
-  if (gpsEnabled) {
-    if (newPVT)
-      lastUbloxDataTime = millis();
-    if (deviceConnected && (millis() - lastUbloxDataTime > 2000)) {
-      myGNSS.checkUblox(); // Force background processing
-    }
-  }
-
-  // --- Stability Delay ---
-  delay(1);
-
-  // Debug Reporting
-  if ((now - lastGpsRateCheckTime) >= GPS_RATE_REPORT_INTERVAL_MS) {
-    float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
-    float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_INTERVAL_MS / 1000.0);
-    currentBatPct = getBatteryPercentage();
-    bool charging = isCharging();
-
-    Serial.printf("--------------------------------------------------\n");
-    Serial.printf("POWER  | Bat: %d%% | Charging: %s | State: %s\n",
-                  currentBatPct, charging ? "YES ⚡" : "NO 🔋",
-                  deviceConnected ? "CONNECTED" : "IDLE");
-    Serial.printf("SENSORS| GPS: %s | IMU: %s\n", gpsEnabled ? "ON" : "OFF",
-                  imuEnabled ? "ON" : "OFF");
-
-    if (gpsEnabled) {
-      uint8_t sats = 0, fix = 0;
-      if (myGNSS.packetUBXNAVPVT != NULL) {
-        sats = myGNSS.packetUBXNAVPVT->data.numSV;
-        fix = myGNSS.packetUBXNAVPVT->data.fixType;
-      }
-      Serial.printf(
-          "GNSS   | Fast: %.2f Hz | Loop: %.2f Hz | SVs: %u | Fix: %u\n",
-          bleRate, gnssRate, sats, fix);
-    }
-
-    if (!deviceConnected && gpsEnabled && !charging) {
-      long hotRem = (GPS_HOT_TIMEOUT - (now - lastDisconnectTime)) / 1000;
-      Serial.printf("TIMER  | GPS Hot Timeout in: %lds\n",
-                    hotRem > 0 ? hotRem : 0);
-    }
-
-    if (ENABLE_DEEP_SLEEP && !deviceConnected && !charging) {
-      long sleepRem = (DEEP_SLEEP_TIMEOUT - (now - lastActivityTime)) / 1000;
-      Serial.printf("TIMER  | Deep Sleep in: %lds\n",
-                    sleepRem > 0 ? sleepRem : 0);
-    }
-    Serial.printf("--------------------------------------------------\n");
-
-    gpsUpdateCount = 0;
-    gnssUpdateCount = 0;
-    lastGpsRateCheckTime = now;
-  }
-
-  // --- Power Management ---
-  bool currentlyCharging = isCharging();
-
-  if (deviceConnected || currentlyCharging) {
-    lastActivityTime = millis();
-    lastDisconnectTime = millis(); // Keep timer fresh while in use
-
-    if (!gpsEnabled)
-      enableGPS();
-    if (!imuEnabled)
-      enableIMU();
-
-    // Always attempt sync if pending (only runs once per power-up)
-    if (configureGPS()) {
-      Serial.println("🔄 GPS Settings synced and ready.");
-    }
-  } else {
-    // DISCONNECT CASE: Disable IMU immediately to save power (Thread-safe)
-    if (imuEnabled)
-      disableIMU();
-  }
-
-  // GPS Hot Timeout logic
-  if (!deviceConnected && gpsEnabled && !currentlyCharging) {
-    // Always use fresh millis() for subtraction to prevent race conditions
-    if (millis() - lastDisconnectTime > GPS_HOT_TIMEOUT) {
-      Serial.printf("⏰ GPS Hot Timeout reached (%lu ms). Powering down.\n",
-                    GPS_HOT_TIMEOUT);
-      disableGPS();
-    }
-  }
-
-  // Optional Deep Sleep logic
-  if (ENABLE_DEEP_SLEEP && !deviceConnected && !currentlyCharging) {
-    if (now - lastActivityTime > DEEP_SLEEP_TIMEOUT) {
-      enterDeepSleep();
-    }
-  }
-
-  // --- Smart Recovery Watchdog ---
-  static unsigned long lastValidData = 0;
-  static unsigned long lastConnectionEvent = 0;
-  static bool lastDeviceConnected = false;
-
-  // Track connection state changes
-  if (deviceConnected && !lastDeviceConnected) {
-    lastConnectionEvent = millis();
-    lastValidData = millis(); // Reset data timer on new connection
-  }
-  lastDeviceConnected = deviceConnected;
-
-  if (gpsEnabled && newPVT)
-    lastValidData = millis();
-
-  if (deviceConnected && !pendingConfig) {
-    unsigned long timeSinceLastData = millis() - lastValidData;
-    unsigned long timeSinceConnected = millis() - lastConnectionEvent;
-
-    // 1. Initial Check: If we just connected but see NO data for 1.2s, force
-    // sync
-    if (timeSinceConnected > 1200 && timeSinceLastData > 1000) {
-      Serial.println("⚠️ Reconnection flow stalled (1s), forcing sync...");
-      pendingConfig = true;
-      lastValidData = millis(); // Prevent spamming
-    }
-    // 2. Steady State: If data ever stops for 3s, force re-sync
-    else if (timeSinceLastData > 3000) {
-      Serial.println("⚠️ GPS data stream stalled (3s), recovering...");
-      pendingConfig = true;
-      lastValidData = millis(); // Prevent spamming
-    }
-  }
-
-  // Reset charging state tracker
-  if (lastChargingState == true && currentlyCharging == false) {
-    lastActivityTime = millis();
-    if (!deviceConnected)
-      lastDisconnectTime = millis();
-  }
-  lastChargingState = currentlyCharging;
+  processGNSS();       // Acquisition and Protocol Logic
+  processIMU();        // Smoothing and Filtering
+  managePower();       // Charging and Idle Timers
+  handleWatchdog();    // Data Integrity Monitor
+  reportSystemStats(); // 5s Status Feed
+  delay(1);            // System Stability
 }
