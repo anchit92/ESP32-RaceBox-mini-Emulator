@@ -5,14 +5,14 @@
 #include <bluefruit.h>
 
 // ============================================================================
-// --- USER CUSTOMIZATION  ---
+// --- USER CUSTOMIZATION GALLERY ---
 // ============================================================================
 
 // --- BLE Branding ---
 #define SERIAL_NUM "0123456789"                // The unique 10-digit serial
+#define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
 
 // (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
-#define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
 #define MANUFACTURER "RaceBox"
 #define FIRMWARE_VER "3.3"
 
@@ -40,6 +40,7 @@
 // ============================================================================
 
 #define GPS_EN_PIN D1      // GPS Power Enable Rail
+#define PIN_VBAT 32        // Battery Voltage sense
 #define PIN_VBAT_ENABLE 14 // Battery Read Enable
 #define PIN_HICHG 22       // Charge Speed (LOW=100mA)
 #define PIN_CHG 23         // Charge Indicator (LOW=Charging)
@@ -137,20 +138,49 @@ void calculateChecksum(uint8_t *payload, uint16_t len, uint8_t cls, uint8_t id,
     *ckB += *ckA;
   }
 }
+bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
+
+uint8_t getBatteryPercentage() {
+  static float filteredV = 0;
+  float v = getBatteryVoltage();
+
+  if (filteredV == 0)
+    filteredV = v;
+  filteredV = (v * 0.1) + (filteredV * 0.9);
+
+  // Linear Calibration per user snippet (3.2V -> 4.2V)
+  if (filteredV >= 4.20)
+    return 100;
+  if (filteredV <= 3.20)
+    return 0;
+
+  return (uint8_t)(((filteredV - 3.20) / (4.20 - 3.20) * 100.0) + 0.5);
+}
+
 float getBatteryVoltage() {
-  // 1. Enable the voltage divider
   digitalWrite(PIN_VBAT_ENABLE, LOW);
-  // 2. Read the analog value
-  // The XIAO divider is 1/2, and the internal ref is 3.6V (on nRF52)
-  // Voltage = ADC_Result * (3.6 / 1024) * 2
-  unsigned int adcCount = analogRead(PIN_VBAT);
-  float voltage = adcCount * (3.6 / 1024.0) * 2.0;
-  digitalWrite(PIN_VBAT_ENABLE, HIGH);
+  delay(1);
+
+  // Reading averaged over 16 samples for stability
+  uint32_t sum = 0;
+  for (int i = 0; i < 16; i++) {
+    sum += analogRead(PIN_VBAT);
+    delayMicroseconds(50);
+  }
+  float adcCount = (float)sum / 16.0;
+
+  // CALIBRATION: Schematic says 1/3 (1M/510k), but high-impedance loading
+  // on nRF52 ADC makes it behave as ~1/4 (1191 counts = 4.18V).
+  float voltage = adcCount * (3.6 / 4096.0) * 4.0;
+
+  if (!isCharging()) {
+    digitalWrite(PIN_VBAT_ENABLE, HIGH);
+  }
   return voltage;
 }
 
 // ============================================================================
-// ---  SENSOR PROCESSING MODULES ---
+// --- 🛰️ SENSOR PROCESSING MODULES ---
 // ============================================================================
 
 // Assemble and transmit the proprietary RaceBox Mini protocol packet
@@ -298,18 +328,41 @@ void processIMU() {
   filtered_gz = (gyroAlpha * gz) + (1.0 - gyroAlpha) * filtered_gz;
 }
 
-uint8_t getBatteryPercentage() {
-  float v = getBatteryVoltage();
-  if (v >= 4.2)
-    return 100;
-  if (v <= 3.5)
-    return 0;
-  return (uint8_t)((v - 3.5) / (4.2 - 3.5) * 100.0);
+// Physics-based Capacity Tracking with Hysteresis
+void updateBatteryState() {
+  static float smoothPct = -1;
+  static uint8_t lastDisplayPct = 0;
+  bool charging = isCharging();
+
+  uint8_t raw = getBatteryPercentage();
+  if (smoothPct < 0) {
+    smoothPct = raw;
+    lastDisplayPct = raw;
+  }
+
+  static unsigned long lastUpdate = 0;
+  if (millis() - lastUpdate > 10000) {
+    lastUpdate = millis();
+
+    // Dynamic Filtering: Use higher smoothing while charging to suppress
+    // voltage spikes, but allow natural rise speed for any battery size.
+    float alpha = charging ? 0.05 : 0.15;
+    smoothPct = (raw * alpha) + (smoothPct * (1.0 - alpha));
+  }
+
+  uint8_t currentRaw = (uint8_t)(smoothPct + 0.5);
+
+  // 2% Hysteresis: prevent flickering between values
+  if (abs((int)currentRaw - (int)lastDisplayPct) >= 2 || currentRaw == 100 ||
+      currentRaw == 0) {
+    lastDisplayPct = currentRaw;
+  }
+
+  currentBatteryPercentage = lastDisplayPct;
 }
-bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
 
 // ============================================================================
-// ---  POWER & SYSTEM MANAGEMENT ---
+// --- 🔋 POWER & SYSTEM MANAGEMENT ---
 // ============================================================================
 
 bool configureGPS() {
@@ -463,24 +516,6 @@ void handleWatchdog() {
 
   if (gpsEnabled && myGNSS.getPVT())
     lastValidData = millis();
-
-  if (deviceConnected && !pendingConfig) {
-    unsigned long stallTime = millis() - lastValidData;
-    unsigned long upTime = millis() - lastConnection;
-
-    // 1. Initial Connection: If data doesn't flow within 1.2s, kickstart sync
-    if (upTime > 1200 && stallTime > 1000) {
-      Serial.println("⚠️ Connection stalled, forcing sync...");
-      pendingConfig = true;
-      lastValidData = millis();
-    }
-    // 2. Steady State: If stream stops for >3s, recover
-    else if (stallTime > 3000) {
-      Serial.println("⚠️ GPS stream stalled, recovering...");
-      pendingConfig = true;
-      lastValidData = millis();
-    }
-  }
 }
 
 // Periodic Status Feed to the Computer
@@ -488,7 +523,6 @@ void reportSystemStats() {
   if (millis() - lastGpsRateCheckTime < GPS_RATE_REPORT_MS)
     return;
 
-  currentBatteryPercentage = getBatteryPercentage();
   float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
   float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
 
@@ -630,7 +664,7 @@ void enterDeepSleep() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n\n SYSTEM STARTUP");
+  Serial.println("\n\n🚀 SYSTEM STARTUP");
 
   pinMode(GPS_EN_PIN, OUTPUT);
   digitalWrite(GPS_EN_PIN, HIGH);
@@ -638,6 +672,7 @@ void setup() {
 
   pinMode(PIN_VBAT, INPUT);
   pinMode(PIN_VBAT_ENABLE, OUTPUT);
+  digitalWrite(PIN_VBAT_ENABLE, LOW); // Start LOW & Stay LOW (Safe & Stable)
   pinMode(PIN_HICHG, OUTPUT);
   pinMode(PIN_CHG, INPUT);
   digitalWrite(PIN_HICHG, LOW);
@@ -714,10 +749,11 @@ void setup() {
 }
 
 void loop() {
-  processGNSS();       // Acquisition and Protocol Logic
-  processIMU();        // Smoothing and Filtering
-  managePower();       // Charging and Idle Timers
-  handleWatchdog();    // Data Integrity Monitor
-  reportSystemStats(); // 5s Status Feed
-  delay(1);            // System Stability
+  processGNSS();        // Acquisition and Protocol Logic
+  processIMU();         // Smoothing and Filtering
+  managePower();        // Charging and Idle Timers
+  handleWatchdog();     // Data Integrity Monitor
+  updateBatteryState(); // Physics-based Capacity Tracking
+  reportSystemStats();  // 5s Status Feed
+  delay(1);             // System Stability
 }
