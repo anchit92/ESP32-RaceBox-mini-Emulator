@@ -3,6 +3,8 @@
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <Wire.h>
 #include <bluefruit.h>
+#include <Adafruit_LittleFS.h>
+#include <InternalFileSystem.h>
 
 // ============================================================================
 // --- USER CUSTOMIZATION GALLERY ---
@@ -50,6 +52,10 @@
 // ---  GLOBAL SYSTEM STATE ---
 // ============================================================================
 
+using namespace Adafruit_LittleFS_Namespace;
+
+const char* CAL_FILE = "/bat_cal.bin";
+
 SFE_UBLOX_GNSS myGNSS;
 LSM6DS3 IMU(I2C_MODE, 0x6A);
 
@@ -59,7 +65,9 @@ bool gpsEnabled = false;
 bool imuEnabled = false;
 bool pendingConfig = false;
 bool lastChargingState = false;
+bool lastPluggedInState = false;
 uint8_t currentBatteryPercentage = 100;
+float batteryMultiplier = 3.41; // Default starting point
 
 // Timing Trackers
 unsigned long lastDisconnectTime = 0;
@@ -138,42 +146,89 @@ void calculateChecksum(uint8_t *payload, uint16_t len, uint8_t cls, uint8_t id,
     *ckB += *ckA;
   }
 }
+
+void saveMultiplierToFlash(float val) {
+  File file(InternalFS);
+  if (file.open(CAL_FILE, FILE_O_WRITE)) {
+    file.write((uint8_t*)&val, sizeof(val));
+    file.close();
+    Serial.println("Data saved to Flash.");
+  }
+}
+
+void loadMultiplierFromFlash() {
+  InternalFS.begin(); // Initialize the file system
+  File file(InternalFS);
+  if (file.open(CAL_FILE, FILE_O_READ)) {
+    file.read((uint8_t*)&batteryMultiplier, sizeof(batteryMultiplier));
+    file.close();
+    Serial.print("Loaded Multiplier from Flash: ");
+    Serial.println(batteryMultiplier, 4);
+  } else {
+    Serial.println("No calibration file found. Using default 3.41.");
+    batteryMultiplier = 3.41; 
+  }
+}
+
 bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
 
 uint8_t getBatteryPercentage() {
-  static float filteredV = 0;
   float v = getBatteryVoltage();
 
-  if (filteredV == 0)
-    filteredV = v;
-  filteredV = (v * 0.1) + (filteredV * 0.9);
+  // Linear Calibration (3.2V -> 4.2V)
+  if (v >= 4.20) return 100;
+  if (v <= 3.20) return 0;
 
-  // Linear Calibration per user snippet (3.2V -> 4.2V)
-  if (filteredV >= 4.20)
-    return 100;
-  if (filteredV <= 3.20)
-    return 0;
+  return (uint8_t)(((v - 3.20) / (4.20 - 3.20) * 100.0) + 0.5);
+}
 
-  return (uint8_t)(((filteredV - 3.20) / (4.20 - 3.20) * 100.0) + 0.5);
+void autoCalibrate() {
+  bool currentlyCharging = isCharging();
+  bool pluggedIn = isPluggedIn();
+
+  // If we JUST finished charging while plugged in
+  if (lastChargingState == true && currentlyCharging == false && pluggedIn) {
+    
+    // 1. Take a high-accuracy sample
+    uint32_t sum = 0;
+    for (int i = 0; i < 64; i++) {
+        sum += analogRead(PIN_VBAT);
+        delay(1);
+    }
+    float averageADC = (float)sum / 64.0;
+
+    // 2. Calculate new multiplier assuming 4.2V
+    if (averageADC > 1000) { // Safety check to ensure battery is actually present
+        batteryMultiplier = (4.2 * 4096.0) / (averageADC * 3.6);
+        
+        // 3. Save to Flash (Optional, but recommended)
+        saveMultiplierToFlash(batteryMultiplier);
+        
+        Serial.print("🎯 Auto-Calibration Complete! New Multiplier: ");
+        Serial.println(batteryMultiplier, 4);
+    }
+  }
+  lastChargingState = currentlyCharging;
+}
+
+bool isPluggedIn() {
+  // Check if USB power is detected
+  return NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk;
 }
 
 float getBatteryVoltage() {
-  digitalWrite(PIN_VBAT_ENABLE, LOW);
+  digitalWrite(PIN_VBAT_ENABLE, LOW); // Enable divider
   delay(1);
 
-  // Reading averaged over 16 samples for stability
   uint32_t sum = 0;
   for (int i = 0; i < 16; i++) {
     sum += analogRead(PIN_VBAT);
     delayMicroseconds(50);
   }
   float adcCount = (float)sum / 16.0;
-
-  // CALIBRATION: Schematic says 1/3 (1M/510k), but high-impedance loading
-  // on nRF52 ADC makes it behave as ~1/4 (1191 counts = 4.18V).
-  float voltage = adcCount * (3.6 / 4096.0) * 4.0;
-
-  if (!isCharging()) {
+  float voltage = (batteryMultiplier * 3.6 * adcCount / 4096);
+  
+  if (!isCharging() && !isPluggedIn()) {
     digitalWrite(PIN_VBAT_ENABLE, HIGH);
   }
   return voltage;
@@ -328,37 +383,38 @@ void processIMU() {
   filtered_gz = (gyroAlpha * gz) + (1.0 - gyroAlpha) * filtered_gz;
 }
 
-// Physics-based Capacity Tracking with Hysteresis
 void updateBatteryState() {
-  static float smoothPct = -1;
-  static uint8_t lastDisplayPct = 0;
-  bool charging = isCharging();
+  static float filteredPct = -1.0;
+  bool pluggedIn = isPluggedIn(); // Using the VBUS check we discussed
 
-  uint8_t raw = getBatteryPercentage();
-  if (smoothPct < 0) {
-    smoothPct = raw;
-    lastDisplayPct = raw;
+  // 1. Get current percentage based on your calibrated voltage
+  float rawPct = getBatteryPercentage(); 
+
+  // 2. Initialize on first run
+  if (filteredPct < 0) {
+    filteredPct = rawPct;
+    currentBatteryPercentage = (uint8_t)rawPct;
+    return;
   }
 
-  static unsigned long lastUpdate = 0;
-  if (millis() - lastUpdate > 10000) {
-    lastUpdate = millis();
+  // 3. Simple Exponential Filter
+  // No need for complex dynamic alphas if your voltage math is solid.
+  // 0.1 gives a smooth transition without feeling laggy.
+  filteredPct = (rawPct * 0.1) + (filteredPct * 0.9);
 
-    // Dynamic Filtering: Use higher smoothing while charging to suppress
-    // voltage spikes, but allow natural rise speed for any battery size.
-    float alpha = charging ? 0.05 : 0.15;
-    smoothPct = (raw * alpha) + (smoothPct * (1.0 - alpha));
+  // 4. Hysteresis & Clamp
+  uint8_t rounded = (uint8_t)(filteredPct + 0.5);
+  
+  // Only update the global variable if change is >= 2% or at boundaries
+  if (abs((int)rounded - (int)currentBatteryPercentage) >= 2 || rounded == 100 || rounded == 0) {
+    currentBatteryPercentage = rounded;
   }
-
-  uint8_t currentRaw = (uint8_t)(smoothPct + 0.5);
-
-  // 2% Hysteresis: prevent flickering between values
-  if (abs((int)currentRaw - (int)lastDisplayPct) >= 2 || currentRaw == 100 ||
-      currentRaw == 0) {
-    lastDisplayPct = currentRaw;
+  
+  // 5. Force 100% logic (Optional)
+  // If VBUS is connected and battery is near full, just show 100%
+  if (pluggedIn && currentBatteryPercentage > 95 && !isCharging()) {
+    currentBatteryPercentage = 100;
   }
-
-  currentBatteryPercentage = lastDisplayPct;
 }
 
 // ============================================================================
@@ -466,21 +522,23 @@ void disableIMU() {
 
 // Manage Charging, Disconnect Timeouts, and Deep Sleep
 void managePower() {
-  bool currentlyCharging = isCharging();
-
-  if (deviceConnected || currentlyCharging) {
+  bool currentlyPluggedIn = isPluggedIn();
+  
+  if (deviceConnected || currentlyPluggedIn) {
     lastActivityTime = millis();
     lastDisconnectTime = millis();
-    enableGPS();
-    enableIMU();
-    configureGPS();
+    if (!gpsEnabled){
+      enableGPS();
+      enableIMU();
+      configureGPS();
+    }
   } else {
     if (imuEnabled)
       disableIMU();
   }
 
   // Hot-State Timeout (Keep GPS active for a window after usage)
-  if (!deviceConnected && gpsEnabled && !currentlyCharging) {
+  if (!deviceConnected && gpsEnabled && !currentlyPluggedIn) {
     if (millis() - lastDisconnectTime > GPS_HOT_TIMEOUT_MS) {
       Serial.printf("⏰ GPS Hot Timeout Reached. Powering down.\n");
       disableGPS();
@@ -488,18 +546,18 @@ void managePower() {
   }
 
   // Deep Sleep Safety Net
-  if (ENABLE_DEEP_SLEEP && !deviceConnected && !currentlyCharging) {
+  if (ENABLE_DEEP_SLEEP && !deviceConnected && !currentlyPluggedIn) {
     if (millis() - lastActivityTime > (DEEP_SLEEP_DAYS * 86400000UL))
       enterDeepSleep();
   }
 
   // Reset charging state trackers
-  if (lastChargingState && !currentlyCharging) {
+  if (lastPluggedInState && !currentlyPluggedIn) {
     lastActivityTime = millis();
     if (!deviceConnected)
       lastDisconnectTime = millis();
   }
-  lastChargingState = currentlyCharging;
+  lastPluggedInState = currentlyPluggedIn;
 }
 
 // Smart Recovery Watchdog: Forces re-sync if the 25Hz feed stalls
@@ -522,18 +580,22 @@ void handleWatchdog() {
 void reportSystemStats() {
   if (millis() - lastGpsRateCheckTime < GPS_RATE_REPORT_MS)
     return;
+  
+  autoCalibrate();
 
   float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
   float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
 
   Serial.println("--------------------------------------------------");
-  Serial.printf("POWER   | Bat: %d%% | Charging: %s | State: %s\n",
-                currentBatteryPercentage, isCharging() ? "YES ⚡" : "NO 🔋",
+  Serial.printf("POWER   | Bat: %d%% (%0.2fV) | Mult: %0.4f\n",
+                currentBatteryPercentage, getBatteryVoltage(), batteryMultiplier);
+  Serial.printf("STATE   | Charging: %s | USB: %s | BLE: %s\n",
+                isCharging() ? "YES ⚡" : "NO 🔋",
+                isPluggedIn() ? "CONNECTED" : "DISCONNECTED",
                 deviceConnected ? "CONNECTED" : "IDLE");
-
   if (gpsEnabled && myGNSS.packetUBXNAVPVT) {
     Serial.printf(
-        "GNSS    | Fast: %.2f Hz | Loop: %.2f Hz | SVs: %u | Fix: %u\n",
+        "GNSS    | BLE: %.2f Hz | GNSS: %.2f Hz | SVs: %u | Fix: %u\n",
         bleRate, gnssRate, myGNSS.packetUBXNAVPVT->data.numSV,
         myGNSS.packetUBXNAVPVT->data.fixType);
   }
@@ -694,7 +756,7 @@ void setup() {
     imuEnabled = true;
     disableIMU();
   }
-
+  loadMultiplierFromFlash();
   // BLE Configuration
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
