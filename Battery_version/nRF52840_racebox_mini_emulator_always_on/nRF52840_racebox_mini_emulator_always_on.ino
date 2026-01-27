@@ -3,8 +3,7 @@
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h>
 #include <Wire.h>
 #include <bluefruit.h>
-#include <Adafruit_LittleFS.h>
-#include <InternalFileSystem.h>
+
 
 // ============================================================================
 // --- USER CUSTOMIZATION GALLERY ---
@@ -12,9 +11,9 @@
 
 // --- BLE Branding ---
 #define SERIAL_NUM "0123456789"                // The unique 10-digit serial
-#define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
 
 // (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
+#define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
 #define MANUFACTURER "RaceBox"
 #define FIRMWARE_VER "3.3"
 
@@ -25,7 +24,7 @@
 #define GPS_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
 // --- Power & Efficiency ---
-#define GPS_HOT_TIMEOUT_MS 900000 // 15 Minutes (Stay powered after disconnect)
+#define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
 #define DEEP_SLEEP_DAYS 7         // Safety net before absolute shutdown
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
@@ -42,7 +41,6 @@
 // ============================================================================
 
 #define GPS_EN_PIN D1      // GPS Power Enable Rail
-#define PIN_VBAT 32        // Battery Voltage sense
 #define PIN_VBAT_ENABLE 14 // Battery Read Enable
 #define PIN_HICHG 22       // Charge Speed (LOW=100mA)
 #define PIN_CHG 23         // Charge Indicator (LOW=Charging)
@@ -51,10 +49,6 @@
 // ============================================================================
 // ---  GLOBAL SYSTEM STATE ---
 // ============================================================================
-
-using namespace Adafruit_LittleFS_Namespace;
-
-const char* CAL_FILE = "/bat_cal.bin";
 
 SFE_UBLOX_GNSS myGNSS;
 LSM6DS3 IMU(I2C_MODE, 0x6A);
@@ -67,7 +61,7 @@ bool pendingConfig = false;
 bool lastChargingState = false;
 bool lastPluggedInState = false;
 uint8_t currentBatteryPercentage = 100;
-float batteryMultiplier = 3.41; // Default starting point
+float batteryMultiplier = 3 ; // Default starting point
 
 // Timing Trackers
 unsigned long lastDisconnectTime = 0;
@@ -147,68 +141,93 @@ void calculateChecksum(uint8_t *payload, uint16_t len, uint8_t cls, uint8_t id,
   }
 }
 
-void saveMultiplierToFlash(float val) {
-  File file(InternalFS);
-  if (file.open(CAL_FILE, FILE_O_WRITE)) {
-    file.write((uint8_t*)&val, sizeof(val));
-    file.close();
-    Serial.println("Data saved to Flash.");
-  }
-}
-
-void loadMultiplierFromFlash() {
-  InternalFS.begin(); // Initialize the file system
-  File file(InternalFS);
-  if (file.open(CAL_FILE, FILE_O_READ)) {
-    file.read((uint8_t*)&batteryMultiplier, sizeof(batteryMultiplier));
-    file.close();
-    Serial.print("Loaded Multiplier from Flash: ");
-    Serial.println(batteryMultiplier, 4);
-  } else {
-    Serial.println("No calibration file found. Using default 3.41.");
-    batteryMultiplier = 3.41; 
-  }
-}
 
 bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
 
-uint8_t getBatteryPercentage() {
-  float v = getBatteryVoltage();
+// 1. Calibration Table
+struct VoltagePoint {
+  float voltage;
+  uint8_t percentage;
+};
 
-  // Linear Calibration (3.2V -> 4.2V)
-  if (v >= 4.20) return 100;
-  if (v <= 3.20) return 0;
+const VoltagePoint batteryMap[] = {
+  {4.20, 100}, {4.07, 90}, {3.97, 80}, {3.87, 70}, {3.82, 60},
+  {3.79, 50},  {3.77, 40}, {3.74, 30}, {3.68, 20}, {3.45, 10}, {3.20, 0}
+};
+const uint8_t mapSize = sizeof(batteryMap) / sizeof(VoltagePoint);
 
-  return (uint8_t)(((v - 3.20) / (4.20 - 3.20) * 100.0) + 0.5);
-}
+// Global State
+bool isCritical = false;
 
-void autoCalibrate() {
-  bool currentlyCharging = isCharging();
-  bool pluggedIn = isPluggedIn();
+// 2. Lookup Function
+float getRawPercentage() {
+  float v = getBatteryVoltage(); // Your 16-sample average function
+  if (v >= batteryMap[0].voltage) return 100.0;
+  if (v <= batteryMap[mapSize - 1].voltage) return 0.0;
 
-  // If we JUST finished charging while plugged in
-  if (lastChargingState == true && currentlyCharging == false && pluggedIn) {
-    
-    // 1. Take a high-accuracy sample
-    uint32_t sum = 0;
-    for (int i = 0; i < 64; i++) {
-        sum += analogRead(PIN_VBAT);
-        delay(1);
-    }
-    float averageADC = (float)sum / 64.0;
-
-    // 2. Calculate new multiplier assuming 4.2V
-    if (averageADC > 1000) { // Safety check to ensure battery is actually present
-        batteryMultiplier = (4.2 * 4096.0) / (averageADC * 3.6);
-        
-        // 3. Save to Flash (Optional, but recommended)
-        saveMultiplierToFlash(batteryMultiplier);
-        
-        Serial.print("🎯 Auto-Calibration Complete! New Multiplier: ");
-        Serial.println(batteryMultiplier, 4);
+  for (int i = 0; i < mapSize - 1; i++) {
+    if (v <= batteryMap[i].voltage && v > batteryMap[i+1].voltage) {
+      float vHigh = batteryMap[i].voltage;
+      float vLow = batteryMap[i+1].voltage;
+      uint8_t pHigh = batteryMap[i].percentage;
+      uint8_t pLow = batteryMap[i+1].percentage;
+      return pLow + (v - vLow) * (pHigh - pLow) / (vHigh - vLow);
     }
   }
-  lastChargingState = currentlyCharging;
+  return 0.0;
+}
+
+// 3. LED Blinker (Call this in your main loop)
+void handleAlerts() {
+  static unsigned long lastBlink = 0;
+  static bool ledState = false;
+
+  if (isCritical && !isCharging()) {
+    // Blink every 500ms if battery is low and NOT charging
+    if (millis() - lastBlink >= 500) {
+      lastBlink = millis();
+      ledState = !ledState;
+      digitalWrite(LED_RED, ledState);
+    }
+  } else {
+    // Ensure LED is off if not in critical state
+    digitalWrite(LED_RED, HIGH);
+    ledState = false;
+  }
+}
+
+// 4. State Update (Call this every 5 seconds)
+void updateBatteryState() {
+  static float filteredPct = -1.0;
+  bool pluggedIn = isCharging();
+  float rawPct = getRawPercentage();
+  float currentV = getBatteryVoltage();
+
+  // Initial Sync
+  if (filteredPct < 0) {
+    filteredPct = rawPct;
+    currentBatteryPercentage = (uint8_t)rawPct;
+  }
+
+  // Heavy Filter (5s interval)
+  filteredPct = (rawPct * 0.05) + (filteredPct * 0.95);
+  uint8_t rounded = (uint8_t)(filteredPct + 0.5);
+  
+  // Set Critical Flag (e.g., below 3.45V / 10%)
+  isCritical = (currentV < 3.45);
+
+  if (rounded != currentBatteryPercentage) {
+    if (pluggedIn) {
+      if (rounded > currentBatteryPercentage) currentBatteryPercentage = rounded;
+    } else {
+      if (rounded < currentBatteryPercentage) currentBatteryPercentage = rounded;
+      // Boot/Recovery Sync
+      if (rawPct > currentBatteryPercentage + 10.0) {
+        currentBatteryPercentage = rounded;
+        filteredPct = rawPct;
+      }
+    }
+  }
 }
 
 bool isPluggedIn() {
@@ -383,40 +402,6 @@ void processIMU() {
   filtered_gz = (gyroAlpha * gz) + (1.0 - gyroAlpha) * filtered_gz;
 }
 
-void updateBatteryState() {
-  static float filteredPct = -1.0;
-  bool pluggedIn = isPluggedIn(); // Using the VBUS check we discussed
-
-  // 1. Get current percentage based on your calibrated voltage
-  float rawPct = getBatteryPercentage(); 
-
-  // 2. Initialize on first run
-  if (filteredPct < 0) {
-    filteredPct = rawPct;
-    currentBatteryPercentage = (uint8_t)rawPct;
-    return;
-  }
-
-  // 3. Simple Exponential Filter
-  // No need for complex dynamic alphas if your voltage math is solid.
-  // 0.1 gives a smooth transition without feeling laggy.
-  filteredPct = (rawPct * 0.1) + (filteredPct * 0.9);
-
-  // 4. Hysteresis & Clamp
-  uint8_t rounded = (uint8_t)(filteredPct + 0.5);
-  
-  // Only update the global variable if change is >= 2% or at boundaries
-  if (abs((int)rounded - (int)currentBatteryPercentage) >= 2 || rounded == 100 || rounded == 0) {
-    currentBatteryPercentage = rounded;
-  }
-  
-  // 5. Force 100% logic (Optional)
-  // If VBUS is connected and battery is near full, just show 100%
-  if (pluggedIn && currentBatteryPercentage > 95 && !isCharging()) {
-    currentBatteryPercentage = 100;
-  }
-}
-
 // ============================================================================
 // --- 🔋 POWER & SYSTEM MANAGEMENT ---
 // ============================================================================
@@ -529,9 +514,9 @@ void managePower() {
     lastDisconnectTime = millis();
     if (!gpsEnabled){
       enableGPS();
-      enableIMU();
       configureGPS();
     }
+    enableIMU();
   } else {
     if (imuEnabled)
       disableIMU();
@@ -581,11 +566,9 @@ void reportSystemStats() {
   if (millis() - lastGpsRateCheckTime < GPS_RATE_REPORT_MS)
     return;
   
-  autoCalibrate();
-
   float bleRate = gpsUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
   float gnssRate = gnssUpdateCount / (GPS_RATE_REPORT_MS / 1000.0);
-
+  updateBatteryState();
   Serial.println("--------------------------------------------------");
   Serial.printf("POWER   | Bat: %d%% (%0.2fV) | Mult: %0.4f\n",
                 currentBatteryPercentage, getBatteryVoltage(), batteryMultiplier);
@@ -756,7 +739,7 @@ void setup() {
     imuEnabled = true;
     disableIMU();
   }
-  loadMultiplierFromFlash();
+
   // BLE Configuration
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
@@ -808,6 +791,8 @@ void setup() {
 
   Serial.println("📡 BLE Broadcast Started.");
   disableGPS();
+  updateBatteryState();
+
 }
 
 void loop() {
@@ -815,7 +800,7 @@ void loop() {
   processIMU();         // Smoothing and Filtering
   managePower();        // Charging and Idle Timers
   handleWatchdog();     // Data Integrity Monitor
-  updateBatteryState(); // Physics-based Capacity Tracking
   reportSystemStats();  // 5s Status Feed
+  handleAlerts();       // Low Battery Warning
   delay(1);             // System Stability
 }
