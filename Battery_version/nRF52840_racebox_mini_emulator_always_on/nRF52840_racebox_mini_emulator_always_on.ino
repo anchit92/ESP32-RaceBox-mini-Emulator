@@ -151,14 +151,14 @@ struct VoltagePoint {
 };
 
 const VoltagePoint batteryMap[] = {
-  {4.20, 100}, {4.07, 90}, {3.97, 80}, {3.87, 70}, {3.82, 60},
+  {4.17, 100}, {4.07, 90}, {3.97, 80}, {3.87, 70}, {3.82, 60},
   {3.79, 50},  {3.77, 40}, {3.74, 30}, {3.68, 20}, {3.45, 10}, {3.20, 0}
 };
 const uint8_t mapSize = sizeof(batteryMap) / sizeof(VoltagePoint);
 
 // Global State
 bool isCritical = false;
-
+int GPSFixType = 0;
 // 2. Lookup Function
 float getRawPercentage() {
   float v = getBatteryVoltage(); // Your 16-sample average function
@@ -177,7 +177,6 @@ float getRawPercentage() {
   return 0.0;
 }
 
-// 3. LED Blinker (Call this in your main loop)
 void handleAlerts() {
   static unsigned long lastBlink = 0;
   static bool ledState = false;
@@ -363,8 +362,7 @@ void processGNSS() {
   if (myGNSS.getPVT()) {
     static uint32_t lastITOW = 0;
     uint32_t currentITOW = myGNSS.packetUBXNAVPVT->data.iTOW;
-    updateFixLEDs(myGNSS.packetUBXNAVPVT->data.fixType);
-
+    GPSFixType = myGNSS.packetUBXNAVPVT->data.fixType;
     if (currentITOW != lastITOW) {
       lastITOW = currentITOW;
       gnssUpdateCount++;
@@ -472,6 +470,7 @@ void enableGPS() {
 }
 
 void disableGPS() {
+  GPSFixType = 0;
   pendingConfig = true;
   digitalWrite(GPS_EN_PIN, LOW);
   gpsEnabled = false;
@@ -509,6 +508,10 @@ void disableIMU() {
 void managePower() {
   bool currentlyPluggedIn = isPluggedIn();
   
+  if (!currentlyPluggedIn && !deviceConnected && currentBatteryPercentage == 0){
+    enterDeepSleep();
+  }
+
   if (deviceConnected || currentlyPluggedIn) {
     lastActivityTime = millis();
     lastDisconnectTime = millis();
@@ -543,6 +546,7 @@ void managePower() {
       lastDisconnectTime = millis();
   }
   lastPluggedInState = currentlyPluggedIn;
+
 }
 
 // Smart Recovery Watchdog: Forces re-sync if the 25Hz feed stalls
@@ -589,29 +593,49 @@ void reportSystemStats() {
   lastGpsRateCheckTime = millis();
 }
 
-// --- LED Fix Status ---
-void updateFixLEDs(uint8_t fixType) {
+// --- LED Status ---
+void updateLEDs(uint8_t fixType) {
+  static unsigned long lastBlink = 0;
+  static bool ledState = false;
+
+  // 1. HIGHEST PRIORITY: Critical Battery Alert
+  if (isCritical && !isCharging()) {
+    if (millis() - lastBlink >= 500) {
+      lastBlink = millis();
+      ledState = !ledState;
+      
+      // Blink Red, keep Green off during critical alert
+      digitalWrite(LED_RED, ledState); 
+      digitalWrite(LED_GREEN, HIGH); 
+    }
+    return; // Exit early so GPS logic doesn't overrule the blink
+  }
+
+  // 2. SECOND PRIORITY: GPS Disabled
   if (!gpsEnabled) {
     digitalWrite(LED_RED, HIGH);   // OFF
     digitalWrite(LED_GREEN, HIGH); // OFF
     return;
   }
 
+  // 3. LOWEST PRIORITY: Standard GPS Status
   switch (fixType) {
-  case 3:                         // 3D Fix
-  case 4:                         // GNSS + Dead Reckoning
-    digitalWrite(LED_RED, HIGH);  // Red OFF
-    digitalWrite(LED_GREEN, LOW); // Green ON
-    break;
-  case 1:                         // Dead Reckoning only
-  case 2:                         // 2D Fix
-    digitalWrite(LED_RED, LOW);   // Red ON
-    digitalWrite(LED_GREEN, LOW); // Green ON -> Orange/Yellow
-    break;
-  default:                         // No fix or Time only
-    digitalWrite(LED_RED, LOW);    // Red ON
-    digitalWrite(LED_GREEN, HIGH); // Green OFF
-    break;
+    case 3: // 3D Fix
+    case 4: // GNSS + DR
+      digitalWrite(LED_RED, HIGH);  // Red OFF
+      digitalWrite(LED_GREEN, LOW); // Green ON
+      break;
+
+    case 1: // DR only
+    case 2: // 2D Fix
+      digitalWrite(LED_RED, LOW);   // Red ON
+      digitalWrite(LED_GREEN, LOW); // Green ON -> Orange/Yellow
+      break;
+
+    default: // No fix
+      digitalWrite(LED_RED, LOW);    // Red ON
+      digitalWrite(LED_GREEN, HIGH); // Green OFF
+      break;
   }
 }
 
@@ -706,6 +730,8 @@ void enterDeepSleep() {
   NRF_POWER->SYSTEMOFF = 1;
 }
 
+
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -732,6 +758,24 @@ void setup() {
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
+  updateBatteryState();
+  if (currentBatteryPercentage == 0) {
+      // Flash RED LED for 5 seconds
+      // (10 cycles of 250ms ON + 250ms OFF = 5 seconds)
+      for (int i = 0; i < 10; i++) {
+        digitalWrite(LED_RED, LOW);  // ON (assuming active low)
+        delay(250);
+        digitalWrite(LED_RED, HIGH); // OFF
+        delay(250);
+      }
+
+      // Ensure everything is off before sleep
+      digitalWrite(LED_RED, HIGH); 
+      
+      // 3. Enter Deep Sleep
+      // This puts the device to sleep forever until a hardware reset/recharge
+      enterDeepSleep(); 
+    }
 
   if (IMU.begin() != 0) {
     Serial.println("❌ IMU Init Failed");
@@ -791,7 +835,6 @@ void setup() {
 
   Serial.println("📡 BLE Broadcast Started.");
   disableGPS();
-  updateBatteryState();
 
 }
 
@@ -801,6 +844,6 @@ void loop() {
   managePower();        // Charging and Idle Timers
   handleWatchdog();     // Data Integrity Monitor
   reportSystemStats();  // 5s Status Feed
-  handleAlerts();       // Low Battery Warning
+  updateLEDs(GPSFixType);
   delay(1);             // System Stability
 }
