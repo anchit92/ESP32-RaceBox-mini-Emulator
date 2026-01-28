@@ -62,7 +62,7 @@ bool pendingConfig = false;
 bool lastChargingState = false;
 bool lastPluggedInState = false;
 uint8_t currentBatteryPercentage = 100;
-float batteryMultiplier = 3; // Default starting point
+float batteryMultiplier = 3.0; // Default starting point
 
 // Timing Trackers
 unsigned long lastDisconnectTime = 0;
@@ -779,7 +779,6 @@ void setup() {
   analogReference(AR_DEFAULT);
   analogReadResolution(12);
 
-  // --- FINAL POWER SAVING ---
   NRF_POWER->DCDCEN = 1; // Enable DC-DC converter (Saves ~30% radio current)
 
   // Put external QSPI Flash into Deep Power Down
@@ -799,15 +798,13 @@ void setup() {
     // Flash RED LED for 5 seconds
     // (10 cycles of 250ms ON + 250ms OFF = 5 seconds)
     for (int i = 0; i < 10; i++) {
-      digitalWrite(LED_RED, LOW); // ON (assuming active low)
+      digitalWrite(LED_RED, LOW); // ON 
       delay(250);
       digitalWrite(LED_RED, HIGH); // OFF
       delay(250);
     }
-
     // Ensure everything is off before sleep
     digitalWrite(LED_RED, HIGH);
-
     // 3. Enter Deep Sleep
     // This puts the device to sleep forever until a hardware reset/recharge
     enterDeepSleep();
