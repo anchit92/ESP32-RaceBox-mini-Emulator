@@ -161,6 +161,7 @@ This device supports two power-saving modes depending on the Configuration in th
 **Configuration**:
 - Enable by setting `#define ENABLE_DEEP_SLEEP true` in the firmware.
 - Adjust `DEEP_SLEEP_DAYS` (default: 7 days) to automatically enter Deep Sleep after extended inactivity.
+  
 **Wake-Up**:
 - **Shake-to-Wake**: The onboard accelerometer detects motion/taps and instantly wakes the device.
 - **Plug-to-Wake**: Connecting USB power will also wake the device.
@@ -175,3 +176,4 @@ This device supports two power-saving modes depending on the Configuration in th
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
 
 ---
+
