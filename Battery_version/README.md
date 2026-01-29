@@ -112,13 +112,13 @@ Select which satellite systems to use. More systems = faster/better fix but slig
 ### 2. Device Name
 Personalize the BLE broadcast name (keep the "RaceBox Mini " prefix).
 ```cpp
-const char *SERIAL_NUM = "0123456789";
+#define SERIAL_NUM "0509050905" // The unique 10-digit serial
 ```
 
 ### 3. Sleep Timeout
 Adjust how long the device waits before entering Light sleep after disconnection (default: 10 minutes).
 ```cpp
-const unsigned long GPS_HOT_TIMEOUT_MS = 600000; // 10 minutes in milliseconds
+#define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
 ```
 
 
@@ -171,9 +171,13 @@ This device supports two power-saving modes depending on the Configuration in th
 ## Usage
 
 1.  Power on the device (switch or battery plug).
-2.  The Blue LED on the XIAO will indicate BLE advertising (named "RaceBox Mini 0123456789" by default).
+2.  The Blue LED on the XIAO will indicate BLE Connection (named "RaceBox Mini 0123456789" by default).
 3.  Connect using a compatible app (RaceChrono, SoloStorm, etc.).
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
+5.  The Red and Green LED on the XIAO will indicate the Fix Status of the GNSS Module.
+    - Red: No Fix
+    - Green: 3D Fix
+    - Yellow: 2D Fix
 
 ---
 
