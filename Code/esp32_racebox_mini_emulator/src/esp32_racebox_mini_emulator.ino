@@ -321,12 +321,20 @@ void setup() {
   pManufacturer->setValue("RaceBox");
   pDeviceInfo->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(RACEBOX_SERVICE_UUID);
-  // Advertise Device Information Service to help official apps discover the device
-  pAdvertising->addServiceUUID("0000180a-0000-1000-8000-00805f9b34fb");
+  BLEAdvertisementData oAdvertisementData;
+  oAdvertisementData.setFlags(0x06); // General Discoverable / BR_EDR_NOT_SUPPORTED
+  oAdvertisementData.setCompleteServices(BLEUUID(RACEBOX_SERVICE_UUID));
+  pAdvertising->setAdvertisementData(oAdvertisementData);
+  BLEAdvertisementData oScanResponseData;
+  oScanResponseData.setName(deviceName.c_str());
+  oScanResponseData.setCompleteServices(BLEUUID("0000180a-0000-1000-8000-00805f9b34fb"));
+  pAdvertising->setScanResponseData(oScanResponseData);
   pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // Optimization for iOS
+  pAdvertising->setMaxPreferred(0x12);
+  
   BLEDevice::startAdvertising();
-  Serial.println("📡 BLE advertising started.");
+  Serial.println("📡 BLE advertising started with Scan Response.");
 
   lastGpsRateCheckTime = millis();
 }
