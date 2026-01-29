@@ -10,7 +10,7 @@
 // ============================================================================
 
 // --- BLE Branding ---
-#define SERIAL_NUM "0123456789" // The unique 10-digit serial
+#define SERIAL_NUM "0509050905" // The unique 10-digit serial
 
 // (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
 #define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
@@ -21,7 +21,8 @@
 #define MAX_NAVIGATION_RATE 25  // 25Hz: Max rate for RaceBox Mini protocol
 #define GPS_BAUD 115200         // High speed for 25Hz data
 #define FACTORY_GPS_BAUD 9600   // Default for cold modules
-#define GPS_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
+
+#define SYSTEM_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
 // --- Power & Efficiency ---
 #define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
@@ -29,13 +30,13 @@
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
 #define ECO_ADV_INTERVAL 1600     // 1000ms: Low power while idle
-#define SLEEP_WHILE_CHARGING true // Allow Light Sleep even when plugged in
+#define SLEEP_WHILE_CHARGING true // Allow Light Sleep even when plugged in /Set false to force high power mode when plugged in
 
 // --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
 #define ENABLE_GNSS_GALILEO
-#define ENABLE_GNSS_GLONASS
-#define ENABLE_GNSS_BEIDOU
+// #define ENABLE_GNSS_GLONASS
+// #define ENABLE_GNSS_BEIDOU
 
 // ============================================================================
 // ---  HARDWARE MAPPINGS ---
@@ -62,7 +63,11 @@ bool pendingConfig = false;
 bool lastChargingState = false;
 bool lastPluggedInState = false;
 uint8_t currentBatteryPercentage = 100;
-float batteryMultiplier = 3.0; // Default starting point
+float batteryMultiplier = 3.0; // Voltage divider 1/3
+
+// Global State
+bool isCritical = false;
+int GPSFixType = 0;
 
 // Timing Trackers
 unsigned long lastDisconnectTime = 0;
@@ -151,13 +156,28 @@ struct VoltagePoint {
 };
 
 const VoltagePoint batteryMap[] = {
-    {4.18, 100}, {4.07, 90}, {3.97, 80}, {3.87, 70}, {3.82, 60}, {3.79, 50},
-    {3.77, 40},  {3.74, 30}, {3.68, 20}, {3.45, 10}, {3.20, 0}};
+  {4.20, 100},
+  {4.15, 98},
+  {4.10, 95},
+  {4.05, 92},
+  {4.00, 88},
+
+  {3.92, 75},
+  {3.85, 65},
+  {3.78, 55},
+  {3.72, 45},
+  {3.68, 35},
+  {3.63, 25},
+  {3.58, 18},
+
+  {3.50, 10},
+  {3.35, 5},
+  {3.20, 0}
+};
+
 const uint8_t mapSize = sizeof(batteryMap) / sizeof(VoltagePoint);
 
-// Global State
-bool isCritical = false;
-int GPSFixType = 0;
+
 // 2. Lookup Function
 float getRawPercentage() {
   float v = getBatteryVoltage(); // Your 16-sample average function
@@ -275,7 +295,7 @@ float getBatteryVoltage() {
 }
 
 // ============================================================================
-// --- 🛰️ SENSOR PROCESSING MODULES ---
+// ---  SENSOR PROCESSING MODULES ---
 // ============================================================================
 
 // Assemble and transmit the proprietary RaceBox Mini protocol packet
