@@ -118,7 +118,7 @@ const char *SERIAL_NUM = "0123456789";
 ### 3. Sleep Timeout
 Adjust how long the device waits before entering Light sleep after disconnection (default: 10 minutes).
 ```cpp
-const unsigned long SLEEP_TIMEOUT = 600000; // 10 minutes in milliseconds
+const unsigned long GPS_HOT_TIMEOUT_MS = 600000; // 10 minutes in milliseconds
 ```
 
 
