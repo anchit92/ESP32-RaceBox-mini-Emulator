@@ -1,4 +1,5 @@
 # Open Source RaceBox Mini Emulator
+> **Disclaimer:** This project is independent and open-source. It is not affiliated with, endorsed by, or officially connected to RaceBox. The name “RaceBox Mini” is used only to describe compatibility.
 
 ## Overview
 
@@ -91,7 +92,6 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
     - Adafruit MPU6050
     - Adafruit Unified Sensor
     - SparkFun u-blox GNSS Arduino Library (ensure it's version 2)
-    - SimpleKalmanFilter
 
 ### 4. Open the Sketch: 
 - Open the esp32_racebox_mini_emulator.ino in the Arduino IDE.
@@ -102,20 +102,26 @@ Download from the [official Arduino website](https://www.arduino.cc/en/software)
 ### 5. Configure Firmware
 
 
-* Update the GNSS constellations to use(lines 25-30).
+* Update the GNSS constellations to use(lines 26-31).
   * For the SAM-M10Q module, I recommend using GPS and one local one, Galilieo should work great in most places. Selecting too many constellations can cause the update frequency to drop from 25Hz.
   * For the MG-902 module, you can select up to 4 constellations but it doesnt really make it more accurate than the SAM-M10Q module, but it doesnt appear to drop its frequency either, so might as well.
 
   https://app.qzss.go.jp/GNSSView/gnssview.html This could help you pick which constellations to pick.
 
-* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 32** to personalize your device.
-  Make sure to **keep** the `"RaceBox Mini "` prefix unchanged — only change the number.
+* **OPTIONAL** – You may update the **10-digit number** in the `deviceName` on **line 33** to personalize your device.
 
-  ✅ Correct:
-  String deviceName = "RaceBox Mini 6942069420";
+    * **ID Limit:** If you intend to use this with the RaceBox App, The number must be **less than 4000000000**. The RaceBox app will not connect to devices with an ID of 4000000000 or higher.
 
-  ❌ Incorrect – Do not change the prefix:
-  String deviceName = "MY GPS 6942069420";
+    * **Prefix Requirement:** Make sure to **keep** the `"RaceBox Mini "` prefix unchanged—only change the numbers.
+
+      ✅ **Correct:**
+      `String deviceName = "RaceBox Mini 3999999999";`
+    
+      ❌ **Incorrect (Prefix changed):**
+      `String deviceName = "MY GPS 6942069420";`
+    
+      ❌ **Incorrect (Number too high):**
+      `String deviceName = "RaceBox Mini 4000000000";`
 
 
 ### 6. Upload the Firmware
@@ -170,6 +176,11 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
+
+
+
+
 
 
 
