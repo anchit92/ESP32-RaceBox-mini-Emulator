@@ -121,6 +121,12 @@ Adjust how long the device waits before entering Light sleep after disconnection
 #define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
 ```
 
+### 4. Charging Behavior
+Configure whether the device sleeps or stays active while charging.
+```cpp
+#define SLEEP_WHILE_CHARGING true // true = Efficiency (Sleeps), false = Performance (Always Active)
+```
+
 
 ## Power Consumption & Runtime
 Tested with a **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
@@ -174,6 +180,8 @@ This device supports two power-saving modes depending on the Configuration in th
 2.  The Blue LED on the XIAO will indicate BLE Connection (named "RaceBox Mini 0123456789" by default).
 3.  Connect using a compatible app (RaceChrono, SoloStorm, etc.).
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
+    - **Rate**: Fixed at **100mA**. Charging a dead 1100mAh battery takes ~12 hours.
+    - **Power Path**: Optimized to allow running the module at full performance *and* charging at max speed simultaneously from a standard USB port.
 5.  The Red and Green LED on the XIAO will indicate the Fix Status of the GNSS Module.
     - Red: No Fix
     - Green: 3D Fix
