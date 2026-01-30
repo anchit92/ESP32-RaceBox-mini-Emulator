@@ -30,7 +30,7 @@
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
 #define ECO_ADV_INTERVAL                                                       \
-  3000 // 3000ms: Extremely low power (3s latency to connect)
+  2500 // 2500ms: Extremely low power (2.5s latency to connect)
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
@@ -700,8 +700,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   digitalWrite(OnboardledPin, HIGH);
 
   Bluefruit.Advertising.stop();
-  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL / 2,
-                                    ECO_ADV_INTERVAL / 2 + 200);
+  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
   Bluefruit.Advertising.start(0);
   Serial.println("❌ BLE Client disconnected.");
   Serial.println("📡 BLE advertising restarted (ECO).");
@@ -880,7 +879,7 @@ void setup() {
   Bluefruit.Advertising.start(0);
 
   Serial.println("📡 BLE Broadcast Started.");
-  // disableGPS();
+  disableGPS();
 }
 
 void loop() {
