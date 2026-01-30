@@ -29,7 +29,8 @@
 #define DEEP_SLEEP_DAYS 7         // Safety net before absolute shutdown
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
-#define ECO_ADV_INTERVAL 1600     // 1000ms: Low power while idle
+#define ECO_ADV_INTERVAL                                                       \
+  4000 // 4000ms: Extremely low power (4s latency to connect)
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
@@ -494,6 +495,7 @@ void enableGPS() {
   delay(100);
   if (!deviceConnected) {
     Bluefruit.Advertising.stop();
+    Bluefruit.setTxPower(4);
     Bluefruit.Advertising.setInterval(FAST_ADV_INTERVAL,
                                       FAST_ADV_INTERVAL + 100);
     Bluefruit.Advertising.start(0);
@@ -505,11 +507,13 @@ void disableGPS() {
   pendingConfig = true;
   digitalWrite(GPS_EN_PIN, LOW);
   gpsEnabled = false;
+  // Serial1.end(); // REVERTED: Caused 4mA float current
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
   if (!deviceConnected) {
     Bluefruit.Advertising.stop();
     Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
+    Bluefruit.setTxPower(0);
     Bluefruit.Advertising.start(0);
   }
 }
@@ -733,7 +737,6 @@ void setIMUForSleep() {
 
   // Route to INT1
   IMU.writeRegister(LSM6DS3_ACC_GYRO_MD1_CFG, 0x08);
-
   // Enable wake pin
   pinMode(PIN_LSM6DS3TR_C_INT1, INPUT_PULLDOWN_SENSE);
 }
@@ -790,11 +793,10 @@ void setup() {
 
   NRF_POWER->DCDCEN = 1; // Enable DC-DC converter (Saves ~30% radio current)
 
-  // Put external QSPI Flash into Deep Power Down
-  // We use the Adafruit Flash library's standard command (0xB9)
-  // This is safe even if the library isn't fully loaded.
+  // Safety: Ensure QSPI Flash CS is High (Deselected) to prevent floating
+  // inputs
   pinMode(PIN_QSPI_CS, OUTPUT);
-  digitalWrite(PIN_QSPI_CS, HIGH); // Ensure CS is de-asserted
+  digitalWrite(PIN_QSPI_CS, HIGH);
 
   pinMode(OnboardledPin, OUTPUT);
   digitalWrite(OnboardledPin, HIGH);
@@ -830,7 +832,7 @@ void setup() {
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
   Bluefruit.autoConnLed(false);
-  Bluefruit.setTxPower(4);
+  Bluefruit.setTxPower(0); // 0dBm is standard for "Mini" (saves current vs +4)
   Bluefruit.setName(DEVICE_NAME);
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);

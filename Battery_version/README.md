@@ -112,7 +112,7 @@ Select which satellite systems to use. More systems = faster/better fix but slig
 ### 2. Device Name
 Personalize the BLE broadcast name (keep the "RaceBox Mini " prefix).
 ```cpp
-#define SERIAL_NUM "0509050905" // The unique 10-digit serial
+#define SERIAL_NUM "0123456789" // The unique 10-digit serial
 ```
 
 ### 3. Sleep Timeout
@@ -133,7 +133,7 @@ Tested with a **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
 
 - **Active Mode**: ~14 Hours (Observed)
   - *Current Draw*: 50-80mA (dependent on GNSS Constellations and Signal)
-- **Light Sleep** (BLE Advertizing, GNSS Off): ~0.05mA (50µA)
+- **Light Sleep** (BLE Advertizing, GNSS Off): ~0.30mA (300µA)
   - Available in 'Always On' firmware / Configurable.
   - Default behavior for Battery Version.
 - **Deep Sleep** (System OFF, Wake-on-Shake): < 10µA
