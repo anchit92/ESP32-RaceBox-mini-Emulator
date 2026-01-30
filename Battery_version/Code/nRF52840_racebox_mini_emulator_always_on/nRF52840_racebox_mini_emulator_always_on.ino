@@ -26,11 +26,11 @@
 
 // --- Power & Efficiency ---
 #define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
-#define DEEP_SLEEP_DAYS 7         // Safety net before absolute shutdown
+#define DEEP_SLEEP_DAYS 1         // Safety net before absolute shutdown
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
 #define ECO_ADV_INTERVAL                                                       \
-  4000 // 4000ms: Extremely low power (4s latency to connect)
+  3000 // 3000ms: Extremely low power (3s latency to connect)
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
@@ -152,7 +152,7 @@ void calculateChecksum(uint8_t *payload, uint16_t len, uint8_t cls, uint8_t id,
 
 bool isCharging() { return digitalRead(PIN_CHG) == LOW; }
 
-// 1. Calibration Table
+// Calibration Table
 struct VoltagePoint {
   float voltage;
   uint8_t percentage;
@@ -168,7 +168,7 @@ const VoltagePoint batteryMap[] = {
 
 const uint8_t mapSize = sizeof(batteryMap) / sizeof(VoltagePoint);
 
-// 2. Lookup Function
+// Lookup Function
 float getRawPercentage() {
   float v = getBatteryVoltage(); // Your 16-sample average function
   if (v >= batteryMap[0].voltage)
@@ -206,7 +206,7 @@ void handleAlerts() {
   }
 }
 
-// 4. State Update (Call this every 5 seconds)
+// State Update
 void updateBatteryState() {
   static float filteredPct = -1.0;
   bool pluggedIn = isCharging();
@@ -289,6 +289,7 @@ float getBatteryVoltage() {
 // ============================================================================
 
 // Assemble and transmit the proprietary RaceBox Mini protocol packet
+
 void sendRaceboxPacket() {
   if (!deviceConnected || myGNSS.packetUBXNAVPVT == NULL)
     return;
@@ -513,7 +514,7 @@ void disableGPS() {
   if (!deviceConnected) {
     Bluefruit.Advertising.stop();
     Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
-    Bluefruit.setTxPower(0);
+    Bluefruit.setTxPower(1);
     Bluefruit.Advertising.start(0);
   }
 }
@@ -699,7 +700,8 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   digitalWrite(OnboardledPin, HIGH);
 
   Bluefruit.Advertising.stop();
-  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
+  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL / 2,
+                                    ECO_ADV_INTERVAL / 2 + 200);
   Bluefruit.Advertising.start(0);
   Serial.println("❌ BLE Client disconnected.");
   Serial.println("📡 BLE advertising restarted (ECO).");
@@ -832,7 +834,7 @@ void setup() {
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
   Bluefruit.autoConnLed(false);
-  Bluefruit.setTxPower(0); // 0dBm is standard for "Mini" (saves current vs +4)
+  Bluefruit.setTxPower(1);
   Bluefruit.setName(DEVICE_NAME);
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -878,7 +880,7 @@ void setup() {
   Bluefruit.Advertising.start(0);
 
   Serial.println("📡 BLE Broadcast Started.");
-  disableGPS();
+  // disableGPS();
 }
 
 void loop() {
