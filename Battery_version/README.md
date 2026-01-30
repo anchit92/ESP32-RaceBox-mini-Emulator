@@ -157,7 +157,7 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~0.05mA (50µA) — Effectively indistinguishable from deep sleep for daily usage (years of standby).
+**Power**: ~0.3mA (300µA) — Still very low power consumption for daily usage (months of standby).
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 10 minutes)
 
@@ -166,7 +166,7 @@ This device supports two power-saving modes depending on the Configuration in th
 **Usage**: For extreme long-term storage where no BLE broadcast is desired.
 **Configuration**:
 - Enable by setting `#define ENABLE_DEEP_SLEEP true` in the firmware.
-- Adjust `DEEP_SLEEP_DAYS` (default: 7 days) to automatically enter Deep Sleep after extended inactivity.
+- Adjust `DEEP_SLEEP_DAYS` (default: 1 day) to automatically enter Deep Sleep after extended inactivity.
   
 **Wake-Up**:
 - **Shake-to-Wake**: The onboard accelerometer detects motion/taps and instantly wakes the device.
@@ -180,12 +180,11 @@ This device supports two power-saving modes depending on the Configuration in th
 2.  The Blue LED on the XIAO will indicate BLE Connection (named "RaceBox Mini 0123456789" by default).
 3.  Connect using a compatible app (RaceChrono, SoloStorm, etc.).
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
-    - **Rate**: Fixed at **100mA**. Charging a dead 1100mAh battery takes ~12 hours.
-    - **Power Path**: Optimized to allow running the module at full performance *and* charging at max speed simultaneously from a standard USB port.
+    - **Rate**: Fixed at **100mA**. Charging a dead 1100mAh battery takes ~11-12 hours due to losses.
+    - **Power Path**: The Seeed XIAO nRF52840 Sense is optimized to allow running the module at full performance *and* charging at max speed simultaneously from a standard USB port.
 5.  The Red and Green LED on the XIAO will indicate the Fix Status of the GNSS Module.
     - Red: No Fix
     - Green: 3D Fix
     - Yellow: 2D Fix
 
 ---
-
