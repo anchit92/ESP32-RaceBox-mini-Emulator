@@ -886,7 +886,7 @@ void loop() {
 
   if (idle && (SLEEP_WHILE_CHARGING || !isPluggedIn())) {
     managePower();
-    delay(1000);
+    delay(ECO_ADV_INTERVAL);
     return;
   }
   processGNSS();
