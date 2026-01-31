@@ -572,7 +572,7 @@ void managePower() {
   }
 
   // Hot-State Timeout (Keep GPS active for a window after usage)
-  if (!deviceConnected && gpsEnabled && !currentlyPluggedIn) {
+  if (!deviceConnected && gpsEnabled && SLEEP_WHILE_CHARGING) {
     if (millis() - lastDisconnectTime > GPS_HOT_TIMEOUT_MS) {
       Serial.printf("⏰ GPS Hot Timeout Reached. Powering down.\n");
       disableGPS();
@@ -910,7 +910,7 @@ void setup() {
 void loop() {
   bool idle = !deviceConnected && !gpsEnabled && !imuEnabled;
 
-  if (isPluggedIn()) {
+  if (idle && isPluggedIn()) {
     manageBatterySampling();
     reportSystemStats();
   }
@@ -919,14 +919,13 @@ void loop() {
     managePower();
     delay(ECO_ADV_INTERVAL);
     return;
-  } else {
-    processGNSS();
-    processIMU();
-    managePower();
-    handleWatchdog();
-    reportSystemStats();
-    manageBatterySampling();
-    updateLEDs(GPSFixType);
-    delay(1);
   }
+  processGNSS();
+  processIMU();
+  managePower();
+  handleWatchdog();
+  reportSystemStats();
+  manageBatterySampling();
+  updateLEDs(GPSFixType);
+  delay(1);
 }
