@@ -6,7 +6,7 @@
 #include <nrf_soc.h>
 
 // ============================================================================
-// --- USER CUSTOMIZATION GALLERY ---
+// --- USER CUSTOMIZATION  ---
 // ============================================================================
 
 // --- BLE Branding ---
@@ -159,7 +159,7 @@ struct VoltagePoint {
 };
 
 const VoltagePoint batteryMap[] = {
-    {4.20, 100}, {4.15, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88},
+    {4.18, 100}, {4.15, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88},
 
     {3.92, 75},  {3.85, 65}, {3.78, 55}, {3.72, 45}, {3.68, 35},
     {3.63, 25},  {3.58, 18},
@@ -491,6 +491,7 @@ bool configureGPS() {
 void enableGPS() {
   if (gpsEnabled)
     return;
+  updateBatteryState();
   digitalWrite(GPS_EN_PIN, HIGH);
   gpsEnabled = true;
   delay(100);
@@ -509,6 +510,9 @@ void disableGPS() {
   digitalWrite(GPS_EN_PIN, LOW);
   gpsEnabled = false;
   // Serial1.end(); // REVERTED: Caused 4mA float current
+  // pinMode(PIN_SERIAL1_TX, INPUT);
+  // pinMode(PIN_SERIAL1_RX, INPUT);
+
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
   if (!deviceConnected) {
@@ -606,6 +610,29 @@ void handleWatchdog() {
     lastValidData = millis();
 }
 
+void manageBatterySampling() {
+  static unsigned long lastBatteryUpdate = 0;
+  const unsigned long batteryInterval = 30000; // 30 Seconds
+
+  bool charging = isCharging();
+  bool pluggedIn = isPluggedIn();
+
+  // Force an update if the power state just changed (Plugged in or Unplugged)
+  // This ensures the Serial report and LEDs react instantly to the cable.
+  static bool lastChargingStatus = false;
+  bool stateChanged = (charging != lastChargingStatus);
+
+  if (millis() - lastBatteryUpdate >= batteryInterval || stateChanged ||
+      lastBatteryUpdate == 0) {
+    lastBatteryUpdate = millis();
+    lastChargingStatus = charging;
+
+    updateBatteryState();
+
+    // Optional: Log to serial when the background update happens
+    // Serial.println("🔋 Battery state updated.");
+  }
+}
 // Periodic Status Feed to the Computer
 void reportSystemStats() {
   if (millis() - lastGpsRateCheckTime < SYSTEM_RATE_REPORT_MS)
@@ -613,11 +640,9 @@ void reportSystemStats() {
 
   float bleRate = gpsUpdateCount / (SYSTEM_RATE_REPORT_MS / 1000.0);
   float gnssRate = gnssUpdateCount / (SYSTEM_RATE_REPORT_MS / 1000.0);
-  updateBatteryState();
   Serial.println("--------------------------------------------------");
-  Serial.printf("POWER   | Bat: %d%% (%0.2fV) | Mult: %0.4f\n",
-                currentBatteryPercentage, getBatteryVoltage(),
-                batteryMultiplier);
+  Serial.printf("POWER   | Bat: %d%% (%0.2fV) \n", currentBatteryPercentage,
+                getBatteryVoltage());
   Serial.printf("STATE   | Charging: %s | USB: %s | BLE: %s\n",
                 isCharging() ? "YES ⚡" : "NO 🔋",
                 isPluggedIn() ? "CONNECTED" : "DISCONNECTED",
@@ -885,16 +910,23 @@ void setup() {
 void loop() {
   bool idle = !deviceConnected && !gpsEnabled && !imuEnabled;
 
+  if (isPluggedIn()) {
+    manageBatterySampling();
+    reportSystemStats();
+  }
+
   if (idle && (SLEEP_WHILE_CHARGING || !isPluggedIn())) {
     managePower();
     delay(ECO_ADV_INTERVAL);
     return;
+  } else {
+    processGNSS();
+    processIMU();
+    managePower();
+    handleWatchdog();
+    reportSystemStats();
+    manageBatterySampling();
+    updateLEDs(GPSFixType);
+    delay(1);
   }
-  processGNSS();
-  processIMU();
-  managePower();
-  handleWatchdog();
-  reportSystemStats();
-  updateLEDs(GPSFixType);
-  delay(1);
 }
