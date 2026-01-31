@@ -129,7 +129,7 @@ Configure whether the device sleeps or stays active while charging.
 
 
 ## Power Consumption & Runtime
-Tested with a **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
+Tested with this **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
 
 - **Active Mode**: ~14 Hours (Observed)
   - *Current Draw*: 50-80mA (dependent on GNSS Constellations and Signal)
