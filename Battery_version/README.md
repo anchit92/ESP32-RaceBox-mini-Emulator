@@ -133,7 +133,7 @@ Tested with this **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
 
 - **Active Mode**: ~14 Hours (Observed)
   - *Current Draw*: 50-80mA (dependent on GNSS Constellations and Signal)
-- **Light Sleep** (BLE Advertizing, GNSS Off): ~0.30mA (300µA)
+- **Light Sleep** (BLE Advertising, GNSS Off): ~0.100mA (100µA)
   - Available in 'Always On' firmware / Configurable.
   - Default behavior for Battery Version.
 - **Deep Sleep** (System OFF, Wake-on-Shake): < 10µA
@@ -157,7 +157,7 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~0.3mA (300µA) — Still very low power consumption for daily usage (months of standby).
+**Power**: ~0.100mA (100µA) — Still very low power consumption for daily usage (months of standby).
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 10 minutes)
 
