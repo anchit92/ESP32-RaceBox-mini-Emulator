@@ -9,6 +9,13 @@ The device is designed to be housed in a custom 3D-printed enclosure, with desig
 
 ---
 
+> [!TIP]
+> **Battery Powered Version?**  
+> For the Battery powered version, check out the folder [here](./Battery_version).
+
+---
+
+
 ## Features
 
 - **High-Resolution GPS Data**: Achieves 25Hz update rate using a U-blox GNSS module.  

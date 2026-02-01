@@ -55,6 +55,7 @@ The GNSS module is powered via the TPS61023 boost converter to ensure stable vol
 ### Alternative Wiring (Matek SAM-M10Q)
 If using the **Matek SAM-M10Q** (which supports 3.3V), you can improve efficiency by using **low-side switching** instead of the boost converter.
 
+#### Low-Side Switching (NPN Transistor Version)
 **Components Needed:**
 - 1x 2N2222 NPN Transistor
 - 1x 1kΩ Resistor
@@ -132,8 +133,8 @@ Configure whether the device sleeps or stays active while charging.
 Tested with this **[1100mAh LiPo Battery](https://a.co/d/hiqOe05)**:
 
 - **Active Mode**: ~14 Hours (Observed)
-  - *Current Draw*: 50-80mA (dependent on GNSS Constellations and Signal)
-- **Light Sleep** (BLE Advertising, GNSS Off): ~0.100mA (100µA)
+  - *Current Draw*: 50-80mA (dependent on GNSS Constellations and Model of GNSS Module)
+- **Light Sleep** (BLE Advertising, GNSS Off): ~100µA
   - Available in 'Always On' firmware / Configurable.
   - Default behavior for Battery Version.
 - **Deep Sleep** (System OFF, Wake-on-Shake): < 10µA
@@ -157,7 +158,7 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~0.100mA (100µA) — Still very low power consumption for daily usage (months of standby).
+**Power**: ~100µA — Still very low power consumption for daily usage (months of standby).
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 10 minutes)
 
@@ -176,7 +177,7 @@ This device supports two power-saving modes depending on the Configuration in th
 
 ## Usage
 
-1.  Power on the device (switch or battery plug).
+1.  If using a battery it should always be powered on
 2.  The Blue LED on the XIAO will indicate BLE Connection (named "RaceBox Mini 0123456789" by default).
 3.  Connect using a compatible app (RaceChrono, SoloStorm, etc.).
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
