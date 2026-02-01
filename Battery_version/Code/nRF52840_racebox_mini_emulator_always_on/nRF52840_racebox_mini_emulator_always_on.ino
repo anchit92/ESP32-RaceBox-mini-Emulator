@@ -159,7 +159,7 @@ struct VoltagePoint {
 };
 
 const VoltagePoint batteryMap[] = {
-    {4.17, 100}, {4.15, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88},
+    {4.17, 100}, {4.14, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88},
 
     {3.92, 75},  {3.85, 65}, {3.78, 55}, {3.72, 45}, {3.68, 35},
     {3.63, 25},  {3.58, 18},
@@ -528,8 +528,8 @@ void enableIMU() {
     return;
   IMU.settings.gyroEnabled = 1;
   IMU.settings.accelEnabled = 1;
-  IMU.settings.accelRange = 2;
-  IMU.settings.gyroRange = 2000;
+  IMU.settings.accelRange = 8;
+  IMU.settings.gyroRange = 500;
   if (IMU.begin() != 0)
     return;
   imuEnabled = true;
@@ -594,22 +594,6 @@ void managePower() {
   lastPluggedInState = currentlyPluggedIn;
 }
 
-// Smart Recovery Watchdog: Forces re-sync if the 25Hz feed stalls
-void handleWatchdog() {
-  static unsigned long lastValidData = 0;
-  static unsigned long lastConnection = 0;
-  static bool wasConnected = false;
-
-  if (deviceConnected && !wasConnected) {
-    lastConnection = millis();
-    lastValidData = millis();
-  }
-  wasConnected = deviceConnected;
-
-  if (gpsEnabled && myGNSS.getPVT())
-    lastValidData = millis();
-}
-
 void manageBatterySampling() {
   static unsigned long lastBatteryUpdate = 0;
   const unsigned long batteryInterval = 30000; // 30 Seconds
@@ -626,13 +610,11 @@ void manageBatterySampling() {
       lastBatteryUpdate == 0) {
     lastBatteryUpdate = millis();
     lastChargingStatus = charging;
-
     updateBatteryState();
 
-    // Optional: Log to serial when the background update happens
-    // Serial.println("🔋 Battery state updated.");
   }
 }
+
 // Periodic Status Feed to the Computer
 void reportSystemStats() {
   if (millis() - lastGpsRateCheckTime < SYSTEM_RATE_REPORT_MS)
@@ -709,7 +691,6 @@ void updateLEDs(uint8_t fixType) {
 // BLE Connection Callbacks
 void connect_callback(uint16_t conn_handle) {
   deviceConnected = true;
-  // Note: pendingConfig is NOT set here to allow "Instant-On" reconnects
   digitalWrite(OnboardledPin, LOW); // Solid Blue ON when connected
   Serial.println("✅ Client connected!");
 
@@ -744,23 +725,16 @@ void setIMUForSleep() {
   IMU.settings.gyroEnabled = 0;
   IMU.settings.accelEnabled = 0;
   IMU.begin();
-
   // 52Hz, ±2g
   IMU.writeRegister(LSM6DS3_ACC_GYRO_CTRL1_XL, 0x30);
-
   // Enable tap detection
   IMU.writeRegister(LSM6DS3_ACC_GYRO_TAP_CFG1, 0x8E);
-
   IMU.writeRegister(LSM6DS3_ACC_GYRO_TAP_THS_6D, 0x8C);
-
   IMU.writeRegister(LSM6DS3_ACC_GYRO_INT_DUR2, 0x20);
-
   // Enable single+double tap
   IMU.writeRegister(LSM6DS3_ACC_GYRO_WAKE_UP_THS, 0x80);
-
   // Low power accel
   IMU.writeRegister(LSM6DS3_ACC_GYRO_CTRL6_G, 0x10);
-
   // Route to INT1
   IMU.writeRegister(LSM6DS3_ACC_GYRO_MD1_CFG, 0x08);
   // Enable wake pin
@@ -769,7 +743,8 @@ void setIMUForSleep() {
 
 void enterDeepSleep() {
   Serial.println("💤 Entering Deep Sleep (Shake to Wake)...");
-
+  Bluefruit.autoConnLed(false);
+  
   // Turn off all LEDs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
@@ -792,7 +767,6 @@ void enterDeepSleep() {
   digitalWrite(LED_RED, HIGH);
 
   Serial.flush(); // Ensure serial message is sent before power cut
-  Bluefruit.autoConnLed(false);
   NRF_POWER->SYSTEMOFF = 1;
 }
 
@@ -842,8 +816,7 @@ void setup() {
     }
     // Ensure everything is off before sleep
     digitalWrite(LED_RED, HIGH);
-    // 3. Enter Deep Sleep
-    // This puts the device to sleep forever until a hardware reset/recharge
+    // Enter Deep Sleep
     enterDeepSleep();
   }
 
@@ -910,20 +883,19 @@ void setup() {
 void loop() {
   bool idle = !deviceConnected && !gpsEnabled && !imuEnabled;
 
-  if (idle && isPluggedIn()) {
-    manageBatterySampling();
-    reportSystemStats();
-  }
-
-  if (idle && (SLEEP_WHILE_CHARGING || !isPluggedIn())) {
+  if (idle) {
+    if(isPluggedIn()) {
+      manageBatterySampling();
+      reportSystemStats();
+    }
     managePower();
     delay(ECO_ADV_INTERVAL);
     return;
   }
+
   processGNSS();
   processIMU();
   managePower();
-  handleWatchdog();
   reportSystemStats();
   manageBatterySampling();
   updateLEDs(GPSFixType);
