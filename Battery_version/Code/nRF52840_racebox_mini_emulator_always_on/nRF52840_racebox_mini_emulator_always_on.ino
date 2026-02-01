@@ -79,11 +79,9 @@ unsigned long lastGpsRateCheckTime = 0;
 unsigned int gpsUpdateCount = 0;
 unsigned int gnssUpdateCount = 0;
 
-// Filter/IMU State
-const unsigned long AccelSampleInterval = 10; // 100Hz
-float accelAlpha = 0.8, gyroAlpha = 0.8;
-float filtered_ax = 0, filtered_ay = 0, filtered_az = 0;
-float filtered_gx = 0, filtered_gy = 0, filtered_gz = 0;
+// Filter/IMU State (Now using hardware filtering)
+float imu_ax = 0, imu_ay = 0, imu_az = 0;
+float imu_gx = 0, imu_gy = 0, imu_gz = 0;
 
 // BLE Core Objects
 const uint8_t RACEBOX_SERVICE_UUID[] = {0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5,
@@ -360,13 +358,13 @@ void sendRaceboxPacket() {
     batPct |= 0x80;
   writeLittleEndian(payload, 67, batPct);
 
-  // Physical Sensors (Smoothed IMU)
-  writeLittleEndian(payload, 68, (int16_t)(filtered_ax * 1000.0));
-  writeLittleEndian(payload, 70, (int16_t)(filtered_ay * 1000.0));
-  writeLittleEndian(payload, 72, (int16_t)(filtered_az * 1000.0));
-  writeLittleEndian(payload, 74, (int16_t)(filtered_gx * 100.0));
-  writeLittleEndian(payload, 76, (int16_t)(filtered_gy * 100.0));
-  writeLittleEndian(payload, 78, (int16_t)(filtered_gz * 100.0));
+  // Physical Sensors (Hardware Filtered)
+  writeLittleEndian(payload, 68, (int16_t)(imu_ax * 1000.0));
+  writeLittleEndian(payload, 70, (int16_t)(imu_ay * 1000.0));
+  writeLittleEndian(payload, 72, (int16_t)(imu_az * 1000.0));
+  writeLittleEndian(payload, 74, (int16_t)(imu_gx * 100.0));
+  writeLittleEndian(payload, 76, (int16_t)(imu_gy * 100.0));
+  writeLittleEndian(payload, 78, (int16_t)(imu_gz * 100.0));
 
   // Protocol Wrapper
   packet[0] = 0xB5;
@@ -411,26 +409,17 @@ void processGNSS() {
     myGNSS.checkUblox();
 }
 
-// IMU Sampling and EMA (Exponential Moving Average) Smoothing
+// IMU Sampling (Hardware filters handle smoothing)
 void processIMU() {
   if (!imuEnabled)
     return;
-  static unsigned long lastRead = 0;
-  if (millis() - lastRead < AccelSampleInterval)
-    return;
-  lastRead = millis();
 
-  float ax = IMU.readFloatAccelX(), ay = IMU.readFloatAccelY(),
-        az = IMU.readFloatAccelZ();
-  float gx = IMU.readFloatGyroX(), gy = IMU.readFloatGyroY(),
-        gz = IMU.readFloatGyroZ();
-
-  filtered_ax = (accelAlpha * ax) + (1.0 - accelAlpha) * filtered_ax;
-  filtered_ay = (accelAlpha * ay) + (1.0 - accelAlpha) * filtered_ay;
-  filtered_az = (accelAlpha * az) + (1.0 - accelAlpha) * filtered_az;
-  filtered_gx = (gyroAlpha * gx) + (1.0 - gyroAlpha) * filtered_gx;
-  filtered_gy = (gyroAlpha * gy) + (1.0 - gyroAlpha) * filtered_gy;
-  filtered_gz = (gyroAlpha * gz) + (1.0 - gyroAlpha) * filtered_gz;
+  imu_ax = IMU.readFloatAccelX();
+  imu_ay = IMU.readFloatAccelY();
+  imu_az = IMU.readFloatAccelZ();
+  imu_gx = IMU.readFloatGyroX();
+  imu_gy = IMU.readFloatGyroY();
+  imu_gz = IMU.readFloatGyroZ();
 }
 
 // ============================================================================
@@ -526,12 +515,23 @@ void disableGPS() {
 void enableIMU() {
   if (imuEnabled)
     return;
-  IMU.settings.gyroEnabled = 1;
-  IMU.settings.accelEnabled = 1;
+  IMU.settings.accelSampleRate = 1660; // 1.6kHz for hardware filtering
+  IMU.settings.gyroSampleRate = 1660;
   IMU.settings.accelRange = 8;
   IMU.settings.gyroRange = 500;
+
   if (IMU.begin() != 0)
     return;
+
+  // --- HARDWARE FILTER CONFIGURATION ---
+  // Gyroscope: Enable LPF1 (Register 0x13, Bit 1)
+  IMU.writeRegister(0x13, 0x02);
+  // Gyroscope: Set LPF1 Bandwidth (Register 0x15, Bits 1:0 = 01)
+  IMU.writeRegister(0x15, 0x01);
+  // Accelerometer: Enable LPF2 (Register 0x17, Bit 0) and Set HPCF (Bits 6:5 =
+  // 01 for ODR/50)
+  IMU.writeRegister(0x17, 0x21);
+
   imuEnabled = true;
 }
 
@@ -611,7 +611,6 @@ void manageBatterySampling() {
     lastBatteryUpdate = millis();
     lastChargingStatus = charging;
     updateBatteryState();
-
   }
 }
 
@@ -744,7 +743,7 @@ void setIMUForSleep() {
 void enterDeepSleep() {
   Serial.println("💤 Entering Deep Sleep (Shake to Wake)...");
   Bluefruit.autoConnLed(false);
-  
+
   // Turn off all LEDs
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
@@ -884,7 +883,7 @@ void loop() {
   bool idle = !deviceConnected && !gpsEnabled && !imuEnabled;
 
   if (idle) {
-    if(isPluggedIn()) {
+    if (isPluggedIn()) {
       manageBatterySampling();
       reportSystemStats();
     }
