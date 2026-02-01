@@ -1,10 +1,14 @@
 # RaceBox Mini Emulator - Battery Version
 
+[← Back to Main Repository](../README.md)
+
+
 ## Overview
 
-This is the battery-powered version of the RaceBox Mini Emulator, built around the **Seeed Studio XIAO nRF52840 Sense**. It retains the high-performance 25Hz GNSS capabilities of the original while adding native battery management, lower power consumption, and a more compact form factor.
+This is the battery-powered version of the RaceBox Mini Emulator, built around the **Seeed Studio XIAO nRF52840 Sense**. It represents the "modern" evolution of the project, correcting the technical debt of using EOL components in the original version.
 
-This version leverages the **onboard LSM6DS3 IMU** of the XIAO nRF52840 Sense, eliminating the need for an external accelerometer/gyroscope module.
+It retains the high-performance 25Hz GNSS capabilities while adding native battery management, ultra-low power consumption, and a more compact form factor. This version leverages the **onboard LSM6DS3 IMU** of the XIAO nRF52840 Sense, eliminating the need for an external accelerometer/gyroscope module.
+
 
 ![Render](Images/Render.PNG)
 
@@ -28,7 +32,7 @@ This version leverages the **onboard LSM6DS3 IMU** of the XIAO nRF52840 Sense, e
 - **GNSS Module**: *All original modules are supported.*
 - **Power Management**: [TPS61023 Boost Converter](https://www.digikey.com/en/products/detail/adafruit-industries-llc/4654/12697636) (or similar 3.3V-to-5V/Adjustable boost module)
 - **M3x4 Screw** (1)    
-- **Battery**: 1S LiPo Battery.
+- **Battery**: 1S LiPo Battery.(Optional, your battery readings might be weird, But it works) 
     - **Max Dimensions**: 6.9mm (H) x 54mm (L) x 34mm (W)
 - **3D Printed Case**: Files located in `STL/` or `CAD/`.
 - **Wires & Soldering Supplies**
