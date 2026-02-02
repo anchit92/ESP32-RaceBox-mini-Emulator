@@ -29,7 +29,7 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 ## Bill of Materials (BOM)
 
 - **Microcontroller**: [Seeed Studio XIAO nRF52840 Sense](https://www.digikey.com/en/products/detail/seeed-technology-co-ltd/102010469/16652896)
-- **GNSS Module**: *All original modules are supported.*
+- **GNSS Module**: *All original modules are supported.* (I'm having trouble with the sam-m10q module, it works if I wire it into the usb power but not on battery...not sure whats up)
 - **Power Management**: [TPS61023 Boost Converter](https://www.digikey.com/en/products/detail/adafruit-industries-llc/4654/12697636) (or similar 3.3V-to-5V/Adjustable boost module)
 - **M3x4 Screw** (1)    
 - **Battery**: 1S LiPo Battery.(Optional, your battery readings might be weird, But it works) 
@@ -180,3 +180,4 @@ This device supports two power-saving modes depending on the Configuration in th
 
 
 ---
+
