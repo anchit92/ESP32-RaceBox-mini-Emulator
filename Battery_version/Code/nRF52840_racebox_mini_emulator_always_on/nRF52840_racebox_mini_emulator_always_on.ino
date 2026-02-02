@@ -20,7 +20,7 @@
 // --- GPS Performance ---
 #define MAX_NAVIGATION_RATE 25 // 25Hz: Max rate for RaceBox Mini protocol
 #define GPS_BAUD 115200        // High speed for 25Hz data
-#define FACTORY_GPS_BAUD 9600  // Default for cold modules
+#define FACTORY_GPS_BAUD 115200  // Default for cold modules
 
 #define SYSTEM_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
@@ -425,13 +425,59 @@ void processIMU() {
 // ============================================================================
 // --- 🔋 POWER & SYSTEM MANAGEMENT ---
 // ============================================================================
+bool resetGpsBaudRate() {
+  Serial.println("Attempting to set Correct Baud Rate");
+  Serial1.begin(FACTORY_GPS_BAUD);
+  delay(500);
+
+  if (!myGNSS.begin(Serial1)) {
+    Serial.print("u-blox GNSS not detected at ");
+    Serial.print(FACTORY_GPS_BAUD);
+    Serial.println(" baud.");
+    Serial.print("u-blox GNSS not detected, Check documentation for factory baud rate and/or check your wiring");
+    return false;
+  } else {
+    Serial.print("GNSS detected at ");
+    Serial.print(FACTORY_GPS_BAUD);
+    Serial.println(" baud!");
+  }
+  delay(500);
+
+  // Now switch baud rate
+  Serial.print("Setting baud rate to ");
+  Serial.print(GPS_BAUD);
+  Serial.println("...");
+  myGNSS.setSerialRate(GPS_BAUD);
+  Serial.print("Baud rate changed to ");
+  Serial.println(GPS_BAUD);
+
+  Serial1.end();
+  delay(100);
+  // Re-initialize the serial port at the new baud rate
+  Serial1.begin(GPS_BAUD);
+  delay(500);
+
+  if (!myGNSS.begin(Serial1)) {
+    Serial.print("GNSS not detected at ");
+    Serial.print(GPS_BAUD);
+    Serial.println(" baud.");
+    Serial.print("u-blox GNSS not detected, Check documentation for factory baud rate and/or check your wiring");
+    return false;
+  }
+  Serial.print("GNSS detected at ");
+  Serial.print(GPS_BAUD);
+  Serial.println(" baud! Saving to Flash");
+  myGNSS.saveConfiguration(); // Save to flash
+  return true;
+}
+
 
 bool configureGPS() {
   if (!pendingConfig)
     return false;
   Serial.println("⚙️ Syncing GPS Settings...");
   Serial1.begin(GPS_BAUD);
-
+  
   bool detected = false;
   for (int i = 0; i < 3; i++) {
     if (myGNSS.begin(Serial1)) {
@@ -442,16 +488,7 @@ bool configureGPS() {
   }
 
   if (!detected) {
-    Serial1.begin(FACTORY_GPS_BAUD);
-    delay(50);
-    if (myGNSS.begin(Serial1)) {
-      myGNSS.setSerialRate(GPS_BAUD);
-      delay(100);
-      Serial1.begin(GPS_BAUD);
-      if (!myGNSS.begin(Serial1))
-        return false;
-    } else
-      return false;
+    return resetGpsBaudRate();
   }
 
   myGNSS.setPortOutput(COM_PORT_UART1, COM_TYPE_UBX);
