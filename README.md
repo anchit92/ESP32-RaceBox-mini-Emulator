@@ -49,7 +49,7 @@ The device is designed to be housed in a custom 3D-printed enclosure, with desig
 To build this project, you'll need the following components:
 
 - **ESP32 Development Board**: (https://a.co/d/fTThpTl)  
-- **U-blox GNSS Module**: (https://a.co/d/b6DcUS6 or https://a.co/d/54zrba3 or https://a.co/d/fxp2tLk)
+- **U-blox GNSS Module**: (https://a.co/d/b6DcUS6 or https://a.co/d/54zrba3 or https://a.co/d/fxp2tLk or https://a.co/d/47V0TqJ)
 - **MPU6050 Accelerometer/Gyroscope Module**: (https://a.co/d/dCMwffg or similar)  
 - **24AWG Hook-up Wire/Jumper Wires** or just use the wiring that comes with GNSS module, its perfect for this application.
 - **M3x6 Screws** (2)    
@@ -199,6 +199,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
