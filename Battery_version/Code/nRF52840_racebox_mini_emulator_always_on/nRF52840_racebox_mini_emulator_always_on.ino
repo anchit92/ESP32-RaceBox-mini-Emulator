@@ -19,8 +19,8 @@
 
 // --- GPS Performance ---
 #define MAX_NAVIGATION_RATE 25 // 25Hz: Max rate for RaceBox Mini protocol
-#define GPS_BAUD 9600        // High speed for 25Hz data
-#define FACTORY_GPS_BAUD 115200  // Default for cold modules
+#define GPS_BAUD 115200        // High speed for 25Hz data
+#define FACTORY_GPS_BAUD 9600 // Default for cold modules
 
 #define SYSTEM_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
