@@ -56,20 +56,6 @@ The GNSS module is powered via the TPS61023 boost converter to ensure stable vol
 - **XIAO GND** -> **GNSS GND**
 - **XIAO D1** -> **TPS61023 EN**
 
-### Alternative Wiring (Matek SAM-M10Q)
-If using the **Matek SAM-M10Q** (which supports 3.3V), you can improve efficiency by using **low-side switching** instead of the boost converter.
-
-#### Low-Side Switching (NPN Transistor Version)
-**Components Needed:**
-- 1x 2N2222 NPN Transistor
-- 1x 1kΩ Resistor
-
-**Wiring:**
-1.  **XIAO 3.3V** -> **GNSS VCC**
-2.  **GNSS GND** -> **2N2222 Collector**
-3.  **2N2222 Emitter** -> **XIAO GND**
-4.  **XIAO D1** -> **1kΩ Resistor** -> **2N2222 Base**
-
 *Note: The Onboard IMU relies on internal connections, so no external wiring is needed for the accelerometer/gyroscope.*
 
 ---
@@ -191,5 +177,6 @@ This device supports two power-saving modes depending on the Configuration in th
     - Red: No Fix
     - Green: 3D Fix
     - Yellow: 2D Fix
+
 
 ---
