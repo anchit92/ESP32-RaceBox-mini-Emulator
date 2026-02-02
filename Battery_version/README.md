@@ -193,4 +193,6 @@ This device supports two power-saving modes depending on the Configuration in th
     - Green: 3D Fix
     - Yellow: 2D Fix
 
+
 ---
+

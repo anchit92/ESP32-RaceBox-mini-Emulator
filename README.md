@@ -18,7 +18,7 @@ There are two distinct versions of this emulator depending on your hardware need
 | **Goal**         | Simple static emulator  | Portable       |
 
 > [!NOTE]
-> The **Battery Version** exists to cleanse my soul—a penance for the "sin" of using an EOL ESP32 and external MPU6050 in the original design. It's the modern, efficient evolution. But the original works great too.
+> The **Battery Version** exists to cleanse my soul—a penance for the "sin" of using an EOL ESP32 and an external, EOL MPU6050 in the original. But the original works great too.
 
 
 The device is designed to be housed in a custom 3D-printed enclosure, with design files included in this repository.
@@ -199,6 +199,8 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
+
 
 
 
