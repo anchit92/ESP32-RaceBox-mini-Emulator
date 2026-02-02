@@ -55,6 +55,7 @@ To build this project, you'll need the following components:
   * MG-903 - https://a.co/d/fxp2tLk 
   * HGLRC M100-5883 - https://a.co/d/47V0TqJ
   * AERO SELFIE M10G-5883L- https://a.co/d/cmYLjBP (Theoretically works but I dont have it)
+    
   Any M10 based U-blox modules should work, the output rate may vary but you should be able to get 25hz with just GPS enabled. But YMMV.
   
 - **MPU6050 Accelerometer/Gyroscope Module**: (https://a.co/d/dCMwffg or similar)  
@@ -206,6 +207,7 @@ Once the firmware is uploaded and the device is powered on:
 ## Contribution
 
 Feel free to open issues or submit pull requests if you have suggestions, improvements, or bug fixes.
+
 
 
 
