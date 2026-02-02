@@ -29,7 +29,7 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 ## Bill of Materials (BOM)
 
 - **Microcontroller**: [Seeed Studio XIAO nRF52840 Sense](https://www.digikey.com/en/products/detail/seeed-technology-co-ltd/102010469/16652896)
-- **GNSS Module**: *All original modules are supported.* (I'm having trouble with the sam-m10q module, it works if I wire it into the usb power but not on battery...not sure whats up)
+- **GNSS Module**: *All original modules are supported.* See, wiring notes about gps modules.
 - **Power Management**: [TPS61023 Boost Converter](https://www.digikey.com/en/products/detail/adafruit-industries-llc/4654/12697636) (or similar 3.3V-to-5V/Adjustable boost module)
 - **M3x4 Screw** (1)    
 - **Battery**: 1S LiPo Battery.(Optional, your battery readings might be weird, But it works) 
@@ -42,19 +42,34 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 ## Assembly & Wiring
 
 ### Power Wiring
-The GNSS module is powered via the TPS61023 boost converter to ensure stable voltage/current from the XIAO's regulated rail.
+The GNSS module is powered via the TPS61023 boost converter. Depending on your GPS module's power requirements, choose one of the following methods:
 
 ![Wiring Assembly](Images/IMG_4082.jpeg)
 
+#### Method A: Standard Wiring (Lower Power Modules)
 1.  **XIAO 3.3V** -> **TPS61023 VIN**
 2.  **XIAO GND** -> **TPS61023 GND**
 3.  **TPS61023 VOUT** -> **GNSS VCC**
+
+#### Method B: High-Current Wiring (Recommended for SAM-M10Q)
+To bypass the XIAO's internal 100mA regulator limit and prevent brownouts during GPS inrush:
+1.  **XIAO BAT+** (or VCC pad on bottom) -> **TPS61023 VIN**
+2.  **XIAO BAT-** (or GND pad on bottom) -> **TPS61023 GND**
+3.  **TPS61023 VOUT** -> **GNSS VCC**
+*Note: The TPS61023 Enable (EN) pin must still be connected to XIAO D1 for software power control.*
 
 ### GNSS Data Wiring
 - **XIAO D6 (TX)** -> **GNSS RX**
 - **XIAO D7 (RX)** -> **GNSS TX**
 - **XIAO GND** -> **GNSS GND**
 - **XIAO D1** -> **TPS61023 EN**
+
+> [!WARNING]
+> **Power Supply Constraints (SAM-M10Q)**:
+> High-performance modules like the **u-blox SAM-M10Q** can pull an inrush current spike of up to **100mA** during cold start or initialization. 
+> The **Seeed Studio XIAO nRF52840 Sense** 3.3V voltage regulator is rated for a maximum of **100mA** when powered by battery.
+> This leaves zero margin for the nRF52's own consumption (BLE, CPU peaks), which can lead to system brownouts or unstable GNSS initialization. 
+> **Reliability Tip**: If using a SAM-M10 module on battery, it is highly recommended to use the **Boost Converter** wiring method (which can handle higher peak loads better) or add a large decoupling capacitor (47µF+) close to the GNSS VCC pin.
 
 *Note: The Onboard IMU relies on internal connections, so no external wiring is needed for the accelerometer/gyroscope.*
 
