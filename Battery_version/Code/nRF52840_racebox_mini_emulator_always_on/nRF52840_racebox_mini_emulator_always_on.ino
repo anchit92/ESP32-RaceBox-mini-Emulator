@@ -10,7 +10,7 @@
 // ============================================================================
 
 // --- BLE Branding ---
-#define SERIAL_NUM "0123456789" // The unique 10-digit serial
+#define SERIAL_NUM "0696969420" // The unique 10-digit serial
 
 // (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
 #define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
