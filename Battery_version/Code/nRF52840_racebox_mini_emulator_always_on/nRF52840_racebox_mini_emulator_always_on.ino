@@ -34,6 +34,7 @@
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
+#define LOW_POWER_BT_TX_POWER -16 // dBm for low power consumption
 
 // --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
@@ -514,6 +515,33 @@ bool configureGPS() {
   return true;
 }
 
+// Re-configure advertising with specific power and interval
+// Standard Adafruit/Seeed Bluefruit requires re-adding data to update the packet-reported TX power
+void setupAdvertising(int8_t power, uint16_t interval) {
+  if (deviceConnected) return;
+
+  Bluefruit.Advertising.stop();
+  Bluefruit.setTxPower(power);
+  Bluefruit.Advertising.setInterval(interval, interval + 200);
+
+  // Clear and Rebuild Advertising Data
+  // This ensures the TX Power field in the packet matches the new hardware power
+  Bluefruit.Advertising.clearData();
+  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+  Bluefruit.Advertising.addTxPower();
+  
+  // NOTE: We keep the Service UUIDs in the primary advertisement for 
+  // compatibility with the RaceBox application.
+  Bluefruit.Advertising.addService(rbService);
+  Bluefruit.Advertising.addService(disService);
+
+  // Scan Response only contains the Name to keep it simple
+  Bluefruit.ScanResponse.clearData();
+  Bluefruit.ScanResponse.addName();
+
+  Bluefruit.Advertising.start(0);
+}
+
 void enableGPS() {
   if (gpsEnabled)
     return;
@@ -522,11 +550,7 @@ void enableGPS() {
   gpsEnabled = true;
   delay(100);
   if (!deviceConnected) {
-    Bluefruit.Advertising.stop();
-    Bluefruit.setTxPower(4);
-    Bluefruit.Advertising.setInterval(FAST_ADV_INTERVAL,
-                                      FAST_ADV_INTERVAL + 100);
-    Bluefruit.Advertising.start(0);
+    setupAdvertising(0, FAST_ADV_INTERVAL);
   }
 }
 
@@ -542,10 +566,7 @@ void disableGPS() {
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
   if (!deviceConnected) {
-    Bluefruit.Advertising.stop();
-    Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
-    Bluefruit.setTxPower(1);
-    Bluefruit.Advertising.start(0);
+    setupAdvertising(LOW_POWER_BT_TX_POWER, ECO_ADV_INTERVAL);
   }
 }
 
@@ -730,6 +751,9 @@ void connect_callback(uint16_t conn_handle) {
   digitalWrite(OnboardledPin, LOW); // Solid Blue ON when connected
   Serial.println("✅ Client connected!");
 
+  // Bumping TX power back to 0 dBm for a stable, high-range connection
+  Bluefruit.setTxPower(0);
+
   Bluefruit.Advertising.setInterval(32, 244);
   Bluefruit.Connection(conn_handle)->requestMtuExchange(128);
 }
@@ -828,6 +852,10 @@ void setup() {
   analogReadResolution(12);
 
   NRF_POWER->DCDCEN = 1; // Enable DC-DC converter (Saves ~30% radio current)
+  // Enable REG0 DC-DC if using VDDH (High Voltage Mode)
+  if (NRF_POWER->MAINREGSTATUS & (POWER_MAINREGSTATUS_MAINREGSTATUS_High << POWER_MAINREGSTATUS_MAINREGSTATUS_Pos)) {
+    NRF_POWER->DCDCEN0 = 1;
+  }
 
   // Safety: Ensure QSPI Flash CS is High (Deselected) to prevent floating
   // inputs
@@ -867,7 +895,7 @@ void setup() {
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
   Bluefruit.autoConnLed(false);
-  Bluefruit.setTxPower(1);
+  Bluefruit.setTxPower(LOW_POWER_BT_TX_POWER);
   Bluefruit.setName(DEVICE_NAME);
   Bluefruit.Periph.setConnectCallback(connect_callback);
   Bluefruit.Periph.setDisconnectCallback(disconnect_callback);
@@ -902,15 +930,8 @@ void setup() {
   rbGnss.setProperties(CHR_PROPS_READ | CHR_PROPS_WRITE);
   rbGnss.begin();
 
-  // Advertising
-  Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
-  Bluefruit.Advertising.addTxPower();
-  Bluefruit.Advertising.addService(rbService);
-  Bluefruit.Advertising.addService(disService);
-  Bluefruit.ScanResponse.addName();
-  Bluefruit.Advertising.restartOnDisconnect(false);
-  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
-  Bluefruit.Advertising.start(0);
+  // Initial Advertising Setup
+  setupAdvertising(LOW_POWER_BT_TX_POWER, ECO_ADV_INTERVAL);
 
   Serial.println("📡 BLE Broadcast Started.");
   disableGPS();
