@@ -545,10 +545,9 @@ void setupAdvertising(int8_t power, uint16_t interval) {
 void enableGPS() {
   if (gpsEnabled)
     return;
-  updateBatteryState();
   digitalWrite(GPS_EN_PIN, HIGH);
   gpsEnabled = true;
-  delay(100);
+  delay(50);
   if (!deviceConnected) {
     setupAdvertising(0, FAST_ADV_INTERVAL);
   }
