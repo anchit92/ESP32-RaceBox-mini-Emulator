@@ -262,11 +262,11 @@ float getBatteryVoltage() {
   delay(1);
 
   uint32_t sum = 0;
-  for (int i = 0; i < 16; i++) {
+  for (int i = 0; i < 8; i++) {
     sum += analogRead(PIN_VBAT);
     delayMicroseconds(50);
   }
-  float adcCount = (float)sum / 16.0;
+  float adcCount = (float)sum / 8.0;
   float voltage = (batteryMultiplier * 3.6 * adcCount / 4096);
 
   // --- LOAD COMPENSATION ---
