@@ -34,7 +34,7 @@
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
-#define LOW_POWER_BT_TX_POWER -16 // dBm for low power consumption
+#define LOW_POWER_BT_TX_POWER -12 // dBm for low power consumption
 
 // --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
