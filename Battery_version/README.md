@@ -42,21 +42,16 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 ## Assembly & Wiring
 
 ### Power Wiring
-The GNSS module is powered via the TPS61023 boost converter. Depending on your GPS module's power requirements, choose one of the following methods:
+The GNSS module is powered via the TPS61023 boost converter:
 
 ![Wiring Assembly](Images/IMG_4082.jpeg)
 
-#### Method A: Standard Wiring (Lower Power Modules)
-1.  **XIAO 3.3V** -> **TPS61023 VIN**
-2.  **XIAO GND** -> **TPS61023 GND**
-3.  **TPS61023 VOUT** -> **GNSS VCC**
 
-#### Method B: High-Current Wiring (Recommended for SAM-M10Q)
+#### TPS61023 Wiring:
 To bypass the XIAO's internal 100mA regulator limit and prevent brownouts during GPS inrush:
-1.  **XIAO BAT+** (or VCC pad on bottom) -> **TPS61023 VIN**
-2.  **XIAO BAT-** (or GND pad on bottom) -> **TPS61023 GND**
+1.  **XIAO BAT+** -> **TPS61023 VIN** -> BAT +
+2.  **XIAO BAT-** -> **TPS61023 GND** -> BAT -
 3.  **TPS61023 VOUT** -> **GNSS VCC**
-*Note: The TPS61023 Enable (EN) pin must still be connected to XIAO D1 for software power control.*
 
 ### GNSS Data Wiring
 - **XIAO D6 (TX)** -> **GNSS RX**
@@ -65,11 +60,10 @@ To bypass the XIAO's internal 100mA regulator limit and prevent brownouts during
 - **XIAO D1** -> **TPS61023 EN**
 
 > [!WARNING]
-> **Power Supply Constraints (SAM-M10Q)**:
-> High-performance modules like the **u-blox SAM-M10Q** can pull an inrush current spike of up to **100mA** during cold start or initialization. 
+> **Power Supply Constraints **:
+> High-performance GNSS modules can pull an inrush current spike of up to **100mA** during cold start or initialization. 
 > The **Seeed Studio XIAO nRF52840 Sense** 3.3V voltage regulator is rated for a maximum of **100mA** when powered by battery.
 > This leaves zero margin for the nRF52's own consumption (BLE, CPU peaks), which can lead to system brownouts or unstable GNSS initialization. 
-> **Reliability Tip**: If using a SAM-M10 module on battery, it is highly recommended to use the **Boost Converter** wiring method (which can handle higher peak loads better) or add a large decoupling capacitor (47µF+) close to the GNSS VCC pin.
 
 *Note: The Onboard IMU relies on internal connections, so no external wiring is needed for the accelerometer/gyroscope.*
 
@@ -164,6 +158,7 @@ This device supports two power-saving modes depending on the Configuration in th
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
 **Power**: ~100µA — Still very low power consumption for daily usage (months of standby).
+
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 10 minutes)
 
@@ -195,4 +190,5 @@ This device supports two power-saving modes depending on the Configuration in th
 
 
 ---
+
 
