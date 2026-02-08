@@ -5,7 +5,7 @@
 
 ## Overview
 
-This is the battery-powered version of the RaceBox Mini Emulator, built around the **Seeed Studio XIAO nRF52840 Sense**. It represents the "modern" evolution of the project, correcting the technical debt of using EOL components in the original version.
+This is the battery-powered version of the RaceBox Mini Emulator, built around the **Seeed Studio XIAO nRF52840 Sense**. It represents a feature complete evolution of the project, correcting the technical debt of using EOL components in the original version.
 
 It retains the high-performance 25Hz GNSS capabilities while adding native battery management, ultra-low power consumption, and a more compact form factor. This version leverages the **onboard LSM6DS3 IMU** of the XIAO nRF52840 Sense, eliminating the need for an external accelerometer/gyroscope module.
 
@@ -32,7 +32,7 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 - **GNSS Module**: *All original modules are supported.* See, wiring notes about gps modules.
 - **Power Management**: [TPS61023 Boost Converter](https://www.digikey.com/en/products/detail/adafruit-industries-llc/4654/12697636) (or similar 3.3V-to-5V/Adjustable boost module)
 - **M3x4 Screw** (1)    
-- **Battery**: 1S LiPo Battery.(Optional, your battery readings might be weird, But it works) 
+- **Battery**: 1S LiPo Battery.(Optional, your battery readings might be weird, But it works just fine) 
     - **Max Dimensions**: 6.9mm (H) x 54mm (L) x 34mm (W)
 - **3D Printed Case**: Files located in `STL/` or `CAD/`.
 - **Wires & Soldering Supplies**
@@ -41,11 +41,12 @@ It retains the high-performance 25Hz GNSS capabilities while adding native batte
 
 ## Assembly & Wiring
 
-### Power Wiring
-The GNSS module is powered via the TPS61023 boost converter:
-
+Stick down the battery with some dual sided tape. Something low strength but enough to prevent it from rattling.
 ![Wiring Assembly](Images/IMG_4082.jpeg)
 
+### Power Wiring
+
+The GNSS module is powered via the TPS61023 boost converter:
 
 #### TPS61023 Wiring:
 To bypass the XIAO's internal 100mA regulator limit and prevent brownouts during GPS inrush:
@@ -63,7 +64,9 @@ To bypass the XIAO's internal 100mA regulator limit and prevent brownouts during
 > **Power Supply Constraints **:
 > High-performance GNSS modules can pull an inrush current spike of up to **100mA** during cold start or initialization. 
 > The **Seeed Studio XIAO nRF52840 Sense** 3.3V voltage regulator is rated for a maximum of **100mA** when powered by battery.
-> This leaves zero margin for the nRF52's own consumption (BLE, CPU peaks), which can lead to system brownouts or unstable GNSS initialization. 
+> This leaves zero margin for the nRF52's own consumption (BLE, CPU peaks), which can lead to system brownouts or unstable GNSS initialization.
+>
+> So dont use the 3.3v rail to power the GPS, as tempting as that is.
 
 *Note: The Onboard IMU relies on internal connections, so no external wiring is needed for the accelerometer/gyroscope.*
 
@@ -157,7 +160,7 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~100µA — Still very low power consumption for daily usage (months of standby).
+**Power**: ~100µA — Low power consumption for daily usage (months of standby).
 
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 10 minutes)
@@ -177,12 +180,11 @@ This device supports two power-saving modes depending on the Configuration in th
 
 ## Usage
 
-1.  If using a battery it should always be powered on
+1.  If using a battery it should always be powered on, If it in deep sleep, shake to to wake it up.
 2.  The Blue LED on the XIAO will indicate BLE Connection (named "RaceBox Mini 0123456789" by default).
 3.  Connect using a compatible app (RaceChrono, SoloStorm, etc.).
 4.  **Charging**: The XIAO handles charging automatically when USB is connected. The green charge LED on the XIAO will light up while charging.
     - **Rate**: Fixed at **100mA**. Charging a dead 1100mAh battery takes ~11-12 hours due to losses.
-    - **Power Path**: The Seeed XIAO nRF52840 Sense is optimized to allow running the module at full performance *and* charging at max speed simultaneously from a standard USB port.
 5.  The Red and Green LED on the XIAO will indicate the Fix Status of the GNSS Module.
     - Red: No Fix
     - Green: 3D Fix
@@ -190,5 +192,6 @@ This device supports two power-saving modes depending on the Configuration in th
 
 
 ---
+
 
 
