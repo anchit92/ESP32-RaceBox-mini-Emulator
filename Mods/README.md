@@ -1,0 +1,44 @@
+# Mods & Additions
+
+# List Of Mods
+
+|              Author              |             Mod Name             |            Description           |
+| -------------------------------- | -------------------------------- | -------------------------------- |
+| anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | A battery powered version of the RaceBox Mini Emulator |
+
+
+# Information For Adding A Mod
+Below is a quick summary of changes required for submitting a mod to the mods folder
+
+## Table Structure
+Information for updating the table for the addition/modification of a mod
+- Put the name of the mod hyperlinked to the location of the mod in the repo
+- A short single-sentence description of the mod
+- Your name as the author
+
+Example table entry: `| Your Name Here |  [Mod Folder Name](Link_To_Mod_Folder) | Short Description |`
+
+## Folder Structure
+Information for updating the `Mods` folder for the addition/modification of a mod
+
+The `Mods` folder uses a 2 layer folder structure to organize all the mods
+1. `Author Folder` - Top-level folder where all of an author's mods are
+2. `Mod Folder` - The folder for an individual mod, which will be found in its relevant `Author Folder`
+
+### Example Of Mod Folder Structure
+
+| `Mods` Folder | `Author Folder` | `Mod Folder` |
+| --- | --- | --- |
+| Mods | Person 1 | Mod A From Person 1 |
+|  |  | Mod B From Person 1 |
+|  |  | Mod C From Person 1 |
+|  | *Person 2 | *Mod D From Person 2 |
+|  | Person 3 | Mod E From Person 3 |
+|  |  | Mod F From Person 3 |
+
+_*Note: If someone has a single mod it still has an author folder_
+
+## What Must A Mod Folder Need To Include
+At a bare minimum, each mod folder should contain a CAD file (_ideally a .step and/or .f3d file_), STLs (_ideally oriented correctly for printing_) a **screenshot from CAD or a photo** of the mod installed and a short `README.md` providing the relevant information for the mod
+
+Also, make sure there are no spaces in any file or folder name (_using underscores `_` or dashes `-` where required_)
