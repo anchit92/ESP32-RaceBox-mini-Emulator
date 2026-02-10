@@ -10,7 +10,7 @@
 // ============================================================================
 
 // --- BLE Branding ---
-#define SERIAL_NUM "0123456789" // The unique 10-digit serial
+#define SERIAL_NUM "0696969420" // The unique 10-digit serial
 
 // (DO NOT CHANGE THESE: Required for RaceBox Application compatibility)
 #define DEVICE_NAME "RaceBox Mini " SERIAL_NUM // Auto-synced Name
@@ -20,7 +20,7 @@
 // --- GPS Performance ---
 #define MAX_NAVIGATION_RATE 25 // 25Hz: Max rate for RaceBox Mini protocol
 #define GPS_BAUD 115200        // High speed for 25Hz data
-#define FACTORY_GPS_BAUD 9600 // Default for cold modules
+#define FACTORY_GPS_BAUD 9600  // Default for cold modules
 
 #define SYSTEM_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
@@ -242,9 +242,10 @@ void updateBatteryState() {
       if (rounded < currentBatteryPercentage)
         currentBatteryPercentage = rounded;
 
-      // Boot/Recovery Sync: If raw is significantly higher (e.g. 10%), force
-      // update
-      if (rawPct > currentBatteryPercentage + 10.0) {
+      // Boot/Recovery Sync: If raw is significantly higher (e.g. 5%), force
+      // update. This prevents the percentage from getting stuck at 0% after
+      // a voltage sag during long standby.
+      if (rawPct > currentBatteryPercentage + 5.0) {
         currentBatteryPercentage = (uint8_t)rawPct;
         filteredPct = rawPct;
       }
@@ -435,7 +436,8 @@ bool resetGpsBaudRate() {
     Serial.print("u-blox GNSS not detected at ");
     Serial.print(FACTORY_GPS_BAUD);
     Serial.println(" baud.");
-    Serial.print("u-blox GNSS not detected, Check documentation for factory baud rate and/or check your wiring");
+    Serial.print("u-blox GNSS not detected, Check documentation for factory "
+                 "baud rate and/or check your wiring");
     return false;
   } else {
     Serial.print("GNSS detected at ");
@@ -462,7 +464,8 @@ bool resetGpsBaudRate() {
     Serial.print("GNSS not detected at ");
     Serial.print(GPS_BAUD);
     Serial.println(" baud.");
-    Serial.print("u-blox GNSS not detected, Check documentation for factory baud rate and/or check your wiring");
+    Serial.print("u-blox GNSS not detected, Check documentation for factory "
+                 "baud rate and/or check your wiring");
     return false;
   }
   Serial.print("GNSS detected at ");
@@ -472,13 +475,12 @@ bool resetGpsBaudRate() {
   return true;
 }
 
-
 bool configureGPS() {
   if (!pendingConfig)
     return false;
   Serial.println("⚙️ Syncing GPS Settings...");
   Serial1.begin(GPS_BAUD);
-  
+
   bool detected = false;
   for (int i = 0; i < 3; i++) {
     if (myGNSS.begin(Serial1)) {
@@ -516,21 +518,24 @@ bool configureGPS() {
 }
 
 // Re-configure advertising with specific power and interval
-// Standard Adafruit/Seeed Bluefruit requires re-adding data to update the packet-reported TX power
+// Standard Adafruit/Seeed Bluefruit requires re-adding data to update the
+// packet-reported TX power
 void setupAdvertising(int8_t power, uint16_t interval) {
-  if (deviceConnected) return;
+  if (deviceConnected)
+    return;
 
   Bluefruit.Advertising.stop();
   Bluefruit.setTxPower(power);
   Bluefruit.Advertising.setInterval(interval, interval + 200);
 
   // Clear and Rebuild Advertising Data
-  // This ensures the TX Power field in the packet matches the new hardware power
+  // This ensures the TX Power field in the packet matches the new hardware
+  // power
   Bluefruit.Advertising.clearData();
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-  
-  // NOTE: We keep the Service UUIDs in the primary advertisement for 
+
+  // NOTE: We keep the Service UUIDs in the primary advertisement for
   // compatibility with the RaceBox application.
   Bluefruit.Advertising.addService(rbService);
   Bluefruit.Advertising.addService(disService);
@@ -747,6 +752,9 @@ void updateLEDs(uint8_t fixType) {
 // BLE Connection Callbacks
 void connect_callback(uint16_t conn_handle) {
   deviceConnected = true;
+  lastActivityTime = millis();
+  lastDisconnectTime = millis();
+
   digitalWrite(OnboardledPin, LOW); // Solid Blue ON when connected
   Serial.println("✅ Client connected!");
 
@@ -760,6 +768,7 @@ void connect_callback(uint16_t conn_handle) {
 void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   deviceConnected = false;
   lastDisconnectTime = millis(); // Start GPS hot timeout timer immediately
+  lastActivityTime = millis();   // Count disconnection as activity
 
   // Turn off Blue LED immediately on disconnect
   digitalWrite(OnboardledPin, HIGH);
@@ -769,7 +778,8 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
   Bluefruit.Advertising.start(0);
   Serial.println("❌ BLE Client disconnected.");
   Serial.println("📡 BLE advertising restarted (ECO).");
-  Serial.println("🛰️ GPS staying hot for 15 minutes...");
+  Serial.printf("🛰️ GPS staying hot for %d minutes...\n",
+                (GPS_HOT_TIMEOUT_MS / 60000));
 }
 
 void write_callback(uint16_t conn_handle, BLECharacteristic *chr, uint8_t *data,
@@ -852,7 +862,8 @@ void setup() {
 
   NRF_POWER->DCDCEN = 1; // Enable DC-DC converter (Saves ~30% radio current)
   // Enable REG0 DC-DC if using VDDH (High Voltage Mode)
-  if (NRF_POWER->MAINREGSTATUS & (POWER_MAINREGSTATUS_MAINREGSTATUS_High << POWER_MAINREGSTATUS_MAINREGSTATUS_Pos)) {
+  if (NRF_POWER->MAINREGSTATUS & (POWER_MAINREGSTATUS_MAINREGSTATUS_High
+                                  << POWER_MAINREGSTATUS_MAINREGSTATUS_Pos)) {
     NRF_POWER->DCDCEN0 = 1;
   }
 
@@ -931,6 +942,12 @@ void setup() {
 
   // Initial Advertising Setup
   setupAdvertising(LOW_POWER_BT_TX_POWER, ECO_ADV_INTERVAL);
+
+  // Initialize Activity Trackers to current time to prevent immediate timeouts
+  // after long boot/standby durations.
+  lastActivityTime = millis();
+  lastDisconnectTime = millis();
+  lastGpsRateCheckTime = millis();
 
   Serial.println("📡 BLE Broadcast Started.");
   disableGPS();

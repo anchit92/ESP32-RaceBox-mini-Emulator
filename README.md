@@ -5,29 +5,13 @@
 
 This project provides firmware for an ESP32-based device that acts as a high-performance GPS/IMU Bluetooth Low Energy (BLE) broadcaster. It integrates a U-blox GNSS module for precise position, velocity, and timing data at 25Hz, along with an MPU6050 accelerometer and gyroscope for motion sensing.
 
-### Two Versions Available
-There are two distinct versions of this emulator depending on your hardware needs:
-
-| Feature          | ESP32 Version (Original) | nRF52 Version (Battery) |
-|------------------|--------------------------|-------------------------|
-| **Core**         | ESP32 DevKit            | Seeed XIAO nRF52840     |
-| **Power**        | External USB (5V)       | 1S LiPo Battery Support |
-| **IMU**          | External MPU6050        | Onboard LSM6DS3         |
-| **Power Consumption**| Moderate (~80mA)       | Ultra-Low (<100µA Idle)  |
-| **Complexity**   | Easier to solder        | More compact/advanced   |
-| **Goal**         | Simple static emulator  | Portable       |
-
-> [!NOTE]
-> The **Battery Version** exists to cleanse my soul—a penance for the "sin" of using an EOL ESP32 and an external, EOL MPU6050 in the original. But the original works great too.
-
-
 The device is designed to be housed in a custom 3D-printed enclosure, with design files included in this repository.
 
 ---
 
 > [!TIP]
-> **Battery Powered Version?**  
-> For the Battery powered version, check out the folder [here](./Battery_version).
+> **Other Hardware Options**  
+>Check Out The Mods Folder For A Battery Powered Version Or Other Hardware Options
 
 ---
 
