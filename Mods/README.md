@@ -4,7 +4,7 @@
 
 |              Author              |             Mod Name             |            Description           |
 | -------------------------------- | -------------------------------- | -------------------------------- |
-| anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | Allows the use of 3mm foam tape |
+| anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | A battery powered version of the RaceBox Mini Emulator |
 
 <br>
 <br>
