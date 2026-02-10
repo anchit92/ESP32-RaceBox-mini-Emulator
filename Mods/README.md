@@ -6,10 +6,6 @@
 | -------------------------------- | -------------------------------- | -------------------------------- |
 | anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | A battery powered version of the RaceBox Mini Emulator |
 
-<br>
-<br>
-<br>
-
 
 # Information For Adding A Mod
 Below is a quick summary of changes required for submitting a mod to the mods folder
