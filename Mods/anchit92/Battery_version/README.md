@@ -1,6 +1,6 @@
 # RaceBox Mini Emulator - Battery Version
 
-[← Back to Main Repository](../../../README.md)
+[← Back to Main Repository](../../../)
 
 
 ## Overview
@@ -192,6 +192,7 @@ This device supports two power-saving modes depending on the Configuration in th
 
 
 ---
+
 
 
 
