@@ -429,6 +429,7 @@ void processIMU() {
 // ============================================================================
 bool resetGpsBaudRate() {
   Serial.println("Attempting to set Correct Baud Rate");
+  Serial1.end();
   Serial1.begin(FACTORY_GPS_BAUD);
   delay(500);
 
