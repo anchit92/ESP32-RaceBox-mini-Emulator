@@ -41,6 +41,8 @@
 #define ENABLE_GNSS_GALILEO
 // #define ENABLE_GNSS_GLONASS
 // #define ENABLE_GNSS_BEIDOU
+// #define ENABLE_GNSS_SBAS
+// #define ENABLE_GNSS_QZSS
 
 // ============================================================================
 // ---  HARDWARE MAPPINGS ---
@@ -519,6 +521,16 @@ bool configureGPS() {
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_BEIDOU);
+#endif
+#ifdef ENABLE_GNSS_SBAS
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_SBAS);
+#endif
+#ifdef ENABLE_GNSS_QZSS
+  myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_QZSS);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_QZSS);
 #endif
 
   pendingConfig = false;
