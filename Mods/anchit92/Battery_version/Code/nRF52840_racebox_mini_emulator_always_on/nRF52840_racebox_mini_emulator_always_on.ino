@@ -502,15 +502,23 @@ bool configureGPS() {
 
 #ifdef ENABLE_GNSS_GPS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GPS);
 #endif
 #ifdef ENABLE_GNSS_GALILEO
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GALILEO);
 #endif
 #ifdef ENABLE_GNSS_GLONASS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GLONASS);
 #endif
 #ifdef ENABLE_GNSS_BEIDOU
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
+#else
+  myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_BEIDOU);
 #endif
 
   pendingConfig = false;
