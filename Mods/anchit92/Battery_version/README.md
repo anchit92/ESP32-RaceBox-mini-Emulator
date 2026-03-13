@@ -89,6 +89,9 @@ Install the following libraries via the Arduino Library Manager:
 - **SparkFun u-blox GNSS Arduino Library** (Version 2.x)
 - **Adafruit TinyUSB**
 
+### 3. If using a SAM M10Q module(Optional)
+Run the `Code/M10_OTP_Burner/M10_OTP_Burner.ino` Code before loading the main firmware to burn the high performance mode onto the gnss module.
+
 ### 3. Upload
 **Note**: The firmware defaults to **Light Sleep** ("Always On") behavior for instant discoverability.
 
