@@ -25,16 +25,18 @@
 #define SYSTEM_RATE_REPORT_MS 5000 // Interval for Serial stats reporting
 
 // --- Power & Efficiency ---
-#define GPS_HOT_TIMEOUT_MS 600000 // 10 Minutes (Stay powered after disconnect)
+#define EXPECT_BATTERY true // Set to false to force USB-only No-Battery mode
+#define GPS_HOT_TIMEOUT_MS 900000 // 15 Minutes (Stay powered after disconnect)
 #define DEEP_SLEEP_DAYS 1         // Safety net before absolute shutdown
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
-#define FAST_ADV_INTERVAL 160     // 100ms: Fast discovery for apps
+#define FAST_ADV_INTERVAL 160 // 100ms: Fast discovery for apps (160 * 0.625ms)
 #define ECO_ADV_INTERVAL                                                       \
-  2500 // 2500ms: Extremely low power (2.5s latency to connect)
+  4000 // 2500ms: Extremely low power (4000 * 0.625ms = 2.5s latency to connect)
+#define LOOP_SLEEP 2500 // 2500ms delay for the main loop iteration while idle
 #define SLEEP_WHILE_CHARGING                                                   \
   true // Allow Light Sleep even when plugged in /Set false to force high power
        // mode when plugged in
-#define LOW_POWER_BT_TX_POWER -12 // dBm for low power consumption
+#define LOW_POWER_BT_TX_POWER -4 // dBm for low power consumption
 
 // --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
@@ -43,6 +45,11 @@
 // #define ENABLE_GNSS_BEIDOU
 // #define ENABLE_GNSS_SBAS
 // #define ENABLE_GNSS_QZSS
+
+// --- Hardware Version ---
+// Uncomment the line below if using the custom PCB version where
+// the GPS_EN_PIN logic is inverted. (For PCB: LOW = ON, HIGH = OFF)
+#define PCB_VERSION
 
 // ============================================================================
 // ---  HARDWARE MAPPINGS ---
@@ -68,11 +75,13 @@ bool imuEnabled = false;
 bool pendingConfig = false;
 bool lastChargingState = false;
 bool lastPluggedInState = false;
+bool batteryConnected = true;
 uint8_t currentBatteryPercentage = 100;
 float batteryMultiplier = 3.0; // Voltage divider 1/3
 
 // Global State
 bool isCritical = false;
+bool isNoBatteryMode = false;
 int GPSFixType = 0;
 
 // Timing Trackers
@@ -115,23 +124,9 @@ BLECharacteristic disManuf(UUID16_CHR_MANUFACTURER_NAME_STRING);
 const int OnboardledPin = LED_BLUE;
 
 // --- Helper Utilities ---
-void writeLittleEndian(uint8_t *buffer, int offset, uint32_t value) {
-  memcpy(buffer + offset, &value, 4);
-}
-void writeLittleEndian(uint8_t *buffer, int offset, int32_t value) {
-  memcpy(buffer + offset, &value, 4);
-}
-void writeLittleEndian(uint8_t *buffer, int offset, uint16_t value) {
-  memcpy(buffer + offset, &value, 2);
-}
-void writeLittleEndian(uint8_t *buffer, int offset, int16_t value) {
-  memcpy(buffer + offset, &value, 2);
-}
-void writeLittleEndian(uint8_t *buffer, int offset, uint8_t value) {
-  buffer[offset] = value;
-}
-void writeLittleEndian(uint8_t *buffer, int offset, int8_t value) {
-  buffer[offset] = (uint8_t)value;
+template <typename T>
+void writeLittleEndian(uint8_t *buffer, int offset, T value) {
+  memcpy(buffer + offset, &value, sizeof(T));
 }
 
 void calculateChecksum(uint8_t *payload, uint16_t len, uint8_t cls, uint8_t id,
@@ -160,10 +155,9 @@ struct VoltagePoint {
 };
 
 const VoltagePoint batteryMap[] = {
-    {4.17, 100}, {4.14, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88},
-
-    {3.92, 75},  {3.85, 65}, {3.78, 55}, {3.72, 45}, {3.68, 35},
-    {3.63, 25},  {3.58, 18},
+    {4.13, 100}, {4.12, 98}, {4.10, 95}, {4.05, 92}, {4.00, 88}, {3.98, 85},
+    {3.96, 82},  {3.94, 79}, {3.92, 75}, {3.90, 72}, {3.88, 68}, {3.85, 65},
+    {3.82, 62},  {3.78, 55}, {3.72, 45}, {3.68, 35}, {3.63, 25}, {3.58, 18},
 
     {3.50, 10},  {3.35, 5},  {3.20, 0}};
 
@@ -189,24 +183,6 @@ float getRawPercentage() {
   return 0.0;
 }
 
-void handleAlerts() {
-  static unsigned long lastBlink = 0;
-  static bool ledState = false;
-
-  if (isCritical && !isCharging()) {
-    // Blink every 500ms if battery is low and NOT charging
-    if (millis() - lastBlink >= 500) {
-      lastBlink = millis();
-      ledState = !ledState;
-      digitalWrite(LED_RED, ledState);
-    }
-  } else {
-    // Ensure LED is off if not in critical state
-    digitalWrite(LED_RED, HIGH);
-    ledState = false;
-  }
-}
-
 // State Update
 void updateBatteryState() {
   static float filteredPct = -1.0;
@@ -220,12 +196,12 @@ void updateBatteryState() {
     currentBatteryPercentage = (uint8_t)rawPct;
   }
 
-  // Heavy Filter (5s interval)
-  filteredPct = (rawPct * 0.05) + (filteredPct * 0.95);
+  // Heavy Filter (Adjusted for 30s interval to prevent lag)
+  filteredPct = (rawPct * 0.15) + (filteredPct * 0.85);
   uint8_t rounded = (uint8_t)(filteredPct + 0.5);
 
-  // Set Critical Flag (e.g., below 3.45V / 10%)
-  isCritical = (currentV < 3.45);
+  // Set Critical Flag (e.g., below 3.35V / 10%)
+  isCritical = (currentV < 3.35);
 
   // --- STICKY 100% LATCH ---
   // If we were at 100%, don't drop the display until the filtered value
@@ -244,10 +220,10 @@ void updateBatteryState() {
       if (rounded < currentBatteryPercentage)
         currentBatteryPercentage = rounded;
 
-      // Boot/Recovery Sync: If raw is significantly higher (e.g. 5%), force
-      // update. This prevents the percentage from getting stuck at 0% after
-      // a voltage sag during long standby.
-      if (rawPct > currentBatteryPercentage + 5.0) {
+      // Boot/Recovery Sync: If raw is significantly out of sync, force update.
+      // This prevents the percentage from getting stuck if updates were missed.
+      if (rawPct > currentBatteryPercentage + 5.0 ||
+          currentBatteryPercentage > rawPct + 20.0) {
         currentBatteryPercentage = (uint8_t)rawPct;
         filteredPct = rawPct;
       }
@@ -273,11 +249,11 @@ float getBatteryVoltage() {
   float voltage = (batteryMultiplier * 3.6 * adcCount / 4096);
 
   // --- LOAD COMPENSATION ---
-  // If the GPS is running (80mA draw), the battery voltage "sags" naturally.
+  // If the GPS is running (30mA draw), the battery voltage sags.
   // We add an offset to compensate so the percentage doesn't drop just
   // because the sensors turned on.
   if (gpsEnabled && !isPluggedIn()) {
-    voltage += 0.040; // Approx compensation for 80mA on a 1100mAh pack
+    voltage += 0.010; // Approx compensation for 30mA on a 1000mAh pack
   }
 
   if (!isCharging() && !isPluggedIn()) {
@@ -430,52 +406,66 @@ void processIMU() {
 // --- 🔋 POWER & SYSTEM MANAGEMENT ---
 // ============================================================================
 bool resetGpsBaudRate() {
-  Serial.println("Attempting to set Correct Baud Rate");
-  Serial1.end();
-  Serial1.begin(FACTORY_GPS_BAUD);
-  delay(500);
+  Serial.println("🔍 Deep Scanning for GNSS activity...");
+  long bauds[] = {9600, 38400, 115200, 57600};
 
-  if (!myGNSS.begin(Serial1)) {
-    Serial.print("u-blox GNSS not detected at ");
-    Serial.print(FACTORY_GPS_BAUD);
-    Serial.println(" baud.");
-    Serial.print("u-blox GNSS not detected, Check documentation for factory "
-                 "baud rate and/or check your wiring");
-    return false;
-  } else {
-    Serial.print("GNSS detected at ");
-    Serial.print(FACTORY_GPS_BAUD);
-    Serial.println(" baud!");
+  for (int b = 0; b < 4; b++) {
+    Serial.print("Checking ");
+    Serial.print(bauds[b]);
+    Serial.print(" baud: ");
+
+    Serial1.end();
+    delay(100);
+    Serial1.begin(bauds[b]);
+
+    // Sniff for raw activity first (for 1.5 seconds)
+    unsigned long sniffStart = millis();
+    bool activity = false;
+    while (millis() - sniffStart < 1500) {
+      if (Serial1.available()) {
+        activity = true;
+        break;
+      }
+    }
+
+    if (activity) {
+      Serial.print("RAW DATA DETECTED! ");
+
+      // Clear the buffer of NMEA messages
+      delay(200);
+      while (Serial1.available())
+        Serial1.read();
+
+      // Try the library sync
+      if (myGNSS.begin(Serial1)) {
+        Serial.println("✅ UBX Protocol Synced!");
+
+        if (bauds[b] != GPS_BAUD) {
+          Serial.print("Elevating to ");
+          Serial.print(GPS_BAUD);
+          Serial.println(" baud...");
+          myGNSS.setSerialRate(GPS_BAUD);
+          delay(100);
+          Serial1.end();
+          delay(100);
+          Serial1.begin(GPS_BAUD);
+        }
+
+        myGNSS.saveConfiguration();
+        return true;
+      } else {
+        Serial.println("❌ Bytes received, but u-blox library could not sync "
+                       "(Check protocol/clones).");
+      }
+    } else {
+      Serial.println("Silent.");
+    }
+
+    Serial1.end();
   }
-  delay(500);
 
-  // Now switch baud rate
-  Serial.print("Setting baud rate to ");
-  Serial.print(GPS_BAUD);
-  Serial.println("...");
-  myGNSS.setSerialRate(GPS_BAUD);
-  Serial.print("Baud rate changed to ");
-  Serial.println(GPS_BAUD);
-
-  Serial1.end();
-  delay(100);
-  // Re-initialize the serial port at the new baud rate
-  Serial1.begin(GPS_BAUD);
-  delay(500);
-
-  if (!myGNSS.begin(Serial1)) {
-    Serial.print("GNSS not detected at ");
-    Serial.print(GPS_BAUD);
-    Serial.println(" baud.");
-    Serial.print("u-blox GNSS not detected, Check documentation for factory "
-                 "baud rate and/or check your wiring");
-    return false;
-  }
-  Serial.print("GNSS detected at ");
-  Serial.print(GPS_BAUD);
-  Serial.println(" baud! Saving to Flash");
-  myGNSS.saveConfiguration(); // Save to flash
-  return true;
+  Serial.println("❌ GNSS not detected. Check VCC voltage or TX/RX wiring.");
+  return false;
 }
 
 bool configureGPS() {
@@ -499,39 +489,71 @@ bool configureGPS() {
 
   myGNSS.setPortOutput(COM_PORT_UART1, COM_TYPE_UBX);
   myGNSS.setAutoPVT(true);
-  myGNSS.setDynamicModel(DYN_MODEL_AUTOMOTIVE);
-  myGNSS.setNavigationFrequency(MAX_NAVIGATION_RATE);
 
+  // High-Performance Track Dynamics Configuration
+  // Used Airborne2g since passenger track cars (GT3/GT4) easily exceed 1g
+  // braking/cornering and we do not want the navigation engine to "smooth" or
+  // reject these forces as anomalies.
+  myGNSS.setDynamicModel(DYN_MODEL_AIRBORNE2g);
+
+  // Disable low-pass filters to prevent time-domain lag on braking and
+  // acceleration telemetry
+  myGNSS.setVal8(0x10220001,
+                 0); // CFG-ODO-OUTLPVEL: Disable speed (3D) low-pass filter
+  myGNSS.setVal8(
+      0x10220002,
+      0); // CFG-ODO-OUTLPCOG: Disable course over ground low-pass filter
+
+  // Ensure static hold is explicitly disabled so slow pit-lane creeping isn't
+  // frozen at 0mph
+  myGNSS.setVal8(0x20250038,
+                 0); // CFG-MOT-GNSSSPEED_THRS: Static hold threshold = 0
+
+  // Enable Super-S (Automatic Mode) to compensate for any signal attenuation
+  // through the ABS enclosure
+  myGNSS.setVal8(0x201100D5, 1); // CFG-NAVSPG-SIGATTCOMP: 1 = Automatic
+
+  // For SAM-M10Q 25Hz, we MUST explicitly disable other constellations FIRST
+  // before increasing the navigation frequency, otherwise the module rejects
+  // it.
 #ifdef ENABLE_GNSS_GPS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GPS);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GPS);
 #endif
+
 #ifdef ENABLE_GNSS_GALILEO
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GALILEO);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GALILEO);
 #endif
+
 #ifdef ENABLE_GNSS_GLONASS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_GLONASS);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_GLONASS);
 #endif
+
 #ifdef ENABLE_GNSS_BEIDOU
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_BEIDOU);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_BEIDOU);
 #endif
+
 #ifdef ENABLE_GNSS_SBAS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_SBAS);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_SBAS);
 #endif
+
 #ifdef ENABLE_GNSS_QZSS
   myGNSS.enableGNSS(true, SFE_UBLOX_GNSS_ID_QZSS);
 #else
   myGNSS.enableGNSS(false, SFE_UBLOX_GNSS_ID_QZSS);
 #endif
+
+  // Now that extraneous constellations are OFF, we can safely request 25Hz
+  myGNSS.setNavigationFrequency(MAX_NAVIGATION_RATE);
 
   pendingConfig = false;
   Serial.println("✅ Configuration complete.");
@@ -571,9 +593,13 @@ void setupAdvertising(int8_t power, uint16_t interval) {
 void enableGPS() {
   if (gpsEnabled)
     return;
+#ifdef PCB_VERSION
+  digitalWrite(GPS_EN_PIN, LOW);
+#else
   digitalWrite(GPS_EN_PIN, HIGH);
+#endif
   gpsEnabled = true;
-  delay(50);
+  delay(100);
   if (!deviceConnected) {
     setupAdvertising(0, FAST_ADV_INTERVAL);
   }
@@ -582,11 +608,15 @@ void enableGPS() {
 void disableGPS() {
   GPSFixType = 0;
   pendingConfig = true;
+#ifdef PCB_VERSION
+  digitalWrite(GPS_EN_PIN, HIGH);
+#else
   digitalWrite(GPS_EN_PIN, LOW);
+#endif
   gpsEnabled = false;
-  // Serial1.end(); // REVERTED: Caused 4mA float current
-  // pinMode(PIN_SERIAL1_TX, INPUT);
-  // pinMode(PIN_SERIAL1_RX, INPUT);
+  // Serial1.end(); // Dont uncomment this, it causes a 4mA power leak
+  // pinMode(PIN_SERIAL1_TX, INPUT_PULLDOWN);
+  // pinMode(PIN_SERIAL1_RX, INPUT_PULLDOWN);
 
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
@@ -627,8 +657,34 @@ void disableIMU() {
   imuEnabled = false;
 }
 
+void powerDownSensors() {
+  // Soft disable
+  if (gpsEnabled)
+    disableGPS();
+  if (imuEnabled)
+    disableIMU();
+
+  // Enforce hardware shutdown state to prevent parasitic leaks or pin sync
+  // issues
+#ifdef PCB_VERSION
+  digitalWrite(GPS_EN_PIN, HIGH);
+#else
+  digitalWrite(GPS_EN_PIN, LOW);
+#endif
+}
+
 // Manage Charging, Disconnect Timeouts, and Deep Sleep
 void managePower() {
+  if (isNoBatteryMode) {
+    // In No-Battery mode, everything stays hot always.
+    if (!gpsEnabled)
+      enableGPS();
+    configureGPS();
+    if (!imuEnabled)
+      enableIMU();
+    return;
+  }
+
   bool currentlyPluggedIn = isPluggedIn();
 
   if (!currentlyPluggedIn && !deviceConnected &&
@@ -657,8 +713,15 @@ void managePower() {
   // Hot-State Timeout (Keep GPS active for a window after usage)
   if (!deviceConnected && gpsEnabled && SLEEP_WHILE_CHARGING) {
     if (millis() - lastDisconnectTime > GPS_HOT_TIMEOUT_MS) {
-      Serial.printf("⏰ GPS Hot Timeout Reached. Powering down.\n");
-      disableGPS();
+      Serial.printf(
+          "⏰ GPS Hot Timeout Reached. Rebooting to clear hardware state...\n");
+      Serial.flush();
+      delay(10);
+
+      // Hard reset the MCU instead of trying to manually power down bugged
+      // peripherals. Setup() will natively drop the board back into its 40uA
+      // state.
+      NVIC_SystemReset();
     }
   }
 
@@ -678,21 +741,30 @@ void managePower() {
 }
 
 void manageBatterySampling() {
+  if (isNoBatteryMode) {
+    currentBatteryPercentage = 100;
+    isCritical = false;
+    batteryConnected = false;
+    return; // Skip battery processing completely in No-Battery Mode
+  }
+
   static unsigned long lastBatteryUpdate = 0;
   const unsigned long batteryInterval = 30000; // 30 Seconds
 
   bool charging = isCharging();
-  bool pluggedIn = isPluggedIn();
 
   // Force an update if the power state just changed (Plugged in or Unplugged)
   // This ensures the Serial report and LEDs react instantly to the cable.
   static bool lastChargingStatus = false;
   bool stateChanged = (charging != lastChargingStatus);
 
+  batteryConnected = true;
+
   if (millis() - lastBatteryUpdate >= batteryInterval || stateChanged ||
       lastBatteryUpdate == 0) {
     lastBatteryUpdate = millis();
     lastChargingStatus = charging;
+
     updateBatteryState();
   }
 }
@@ -707,10 +779,11 @@ void reportSystemStats() {
   Serial.println("--------------------------------------------------");
   Serial.printf("POWER   | Bat: %d%% (%0.2fV) \n", currentBatteryPercentage,
                 getBatteryVoltage());
-  Serial.printf("STATE   | Charging: %s | USB: %s | BLE: %s\n",
+  Serial.printf("STATE   | Charging: %s | USB: %s | BLE: %s | BAT: %s\n",
                 isCharging() ? "YES ⚡" : "NO 🔋",
                 isPluggedIn() ? "CONNECTED" : "DISCONNECTED",
-                deviceConnected ? "CONNECTED" : "IDLE");
+                deviceConnected ? "CONNECTED" : "IDLE",
+                batteryConnected ? "PRESENT" : "MISSING");
   if (gpsEnabled && myGNSS.packetUBXNAVPVT) {
     Serial.printf(
         "GNSS    | BLE: %.2f Hz | GNSS: %.2f Hz | SVs: %u | Fix: %u\n", bleRate,
@@ -793,12 +866,7 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason) {
 
   // Turn off Blue LED immediately on disconnect
   digitalWrite(OnboardledPin, HIGH);
-
-  Bluefruit.Advertising.stop();
-  Bluefruit.Advertising.setInterval(ECO_ADV_INTERVAL, ECO_ADV_INTERVAL + 200);
-  Bluefruit.Advertising.start(0);
   Serial.println("❌ BLE Client disconnected.");
-  Serial.println("📡 BLE advertising restarted (ECO).");
   Serial.printf("🛰️ GPS staying hot for %d minutes...\n",
                 (GPS_HOT_TIMEOUT_MS / 60000));
 }
@@ -860,15 +928,16 @@ void enterDeepSleep() {
   NRF_POWER->SYSTEMOFF = 1;
 }
 
-void setup() {
+bool detectNoBatteryAtBoot() { return !EXPECT_BATTERY; }
 
-  Serial.begin(115200);
-  delay(1000);
-  Serial.println("\n\n🚀 SYSTEM STARTUP");
-
+void setupHardware() {
   pinMode(GPS_EN_PIN, OUTPUT);
+#ifdef PCB_VERSION
+  digitalWrite(GPS_EN_PIN, LOW);
+#else
   digitalWrite(GPS_EN_PIN, HIGH);
-  
+#endif
+
   pinMode(PIN_VBAT, INPUT);
   pinMode(PIN_VBAT_ENABLE, OUTPUT);
   digitalWrite(PIN_VBAT_ENABLE, LOW); // Start LOW & Stay LOW (Safe & Stable)
@@ -898,30 +967,9 @@ void setup() {
   pinMode(LED_GREEN, OUTPUT);
   digitalWrite(LED_RED, HIGH);
   digitalWrite(LED_GREEN, HIGH);
-  updateBatteryState();
-  if (currentBatteryPercentage == 0) {
-    // Flash RED LED for 5 seconds
-    // (10 cycles of 250ms ON + 250ms OFF = 5 seconds)
-    for (int i = 0; i < 10; i++) {
-      digitalWrite(LED_RED, LOW); // ON
-      delay(250);
-      digitalWrite(LED_RED, HIGH); // OFF
-      delay(250);
-    }
-    // Ensure everything is off before sleep
-    digitalWrite(LED_RED, HIGH);
-    // Enter Deep Sleep
-    enterDeepSleep();
-  }
+}
 
-  if (IMU.begin() != 0) {
-    Serial.println("❌ IMU Init Failed");
-  } else {
-    imuEnabled = true;
-    disableIMU();
-  }
-
-  // BLE Configuration
+void setupBLE() {
   Bluefruit.configPrphBandwidth(BANDWIDTH_MAX);
   Bluefruit.begin();
   Bluefruit.autoConnLed(false);
@@ -959,9 +1007,60 @@ void setup() {
 
   rbGnss.setProperties(CHR_PROPS_READ | CHR_PROPS_WRITE);
   rbGnss.begin();
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+  Serial.println("\n\n🚀 SYSTEM STARTUP");
+
+  setupHardware();
+
+  Serial.println("🔍 Checking power source...");
+  isNoBatteryMode = detectNoBatteryAtBoot();
+  if (isNoBatteryMode) {
+    batteryConnected = false;
+    Serial.println("⚠️ NO BATTERY DETECTED! Booting in USB Always-On mode.");
+  } else {
+    Serial.println("🔋 Battery detected! Booting in standard/Eco mode.");
+  }
+
+  updateBatteryState();
+  if (currentBatteryPercentage == 0 && !isNoBatteryMode && !isCharging()) {
+    // Flash RED LED for 5 seconds
+    // (10 cycles of 250ms ON + 250ms OFF = 5 seconds)
+    for (int i = 0; i < 10; i++) {
+      digitalWrite(LED_RED, LOW); // ON
+      delay(250);
+      digitalWrite(LED_RED, HIGH); // OFF
+      delay(250);
+    }
+    // Ensure everything is off before sleep
+    digitalWrite(LED_RED, HIGH);
+    // Enter Deep Sleep
+    enterDeepSleep();
+  }
+
+  if (IMU.begin() != 0) {
+    Serial.println("❌ IMU Init Failed");
+  } else {
+    imuEnabled = true;
+    if (!isNoBatteryMode)
+      disableIMU();
+  }
+
+  setupBLE();
 
   // Initial Advertising Setup
-  setupAdvertising(LOW_POWER_BT_TX_POWER, ECO_ADV_INTERVAL);
+  if (isNoBatteryMode) {
+    setupAdvertising(0, FAST_ADV_INTERVAL);
+    enableGPS(); // Keep it hot from the start
+    Serial.println("📡 BLE Broadcast Started (FAST - Always On).");
+  } else {
+    setupAdvertising(LOW_POWER_BT_TX_POWER, ECO_ADV_INTERVAL);
+    disableGPS();
+    Serial.println("📡 BLE Broadcast Started (ECO).");
+  }
 
   // Initialize Activity Trackers to current time to prevent immediate timeouts
   // after long boot/standby durations.
@@ -969,20 +1068,27 @@ void setup() {
   lastDisconnectTime = millis();
   lastGpsRateCheckTime = millis();
 
-  Serial.println("📡 BLE Broadcast Started.");
-  disableGPS();
+  // Flash GREEN LED 5 times to indicate successful startup
+  Serial.println("Startup Complete.");
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(LED_GREEN, LOW); // ON
+    delay(500);
+    digitalWrite(LED_GREEN, HIGH); // OFF
+    delay(500);
+  }
 }
 
 void loop() {
   bool idle = !deviceConnected && !gpsEnabled && !imuEnabled;
 
-  if (idle) {
+  if (idle && !isNoBatteryMode) {
+    manageBatterySampling(); // Always track battery to prevent deep sleep death
     if (isPluggedIn()) {
-      manageBatterySampling();
       reportSystemStats();
     }
     managePower();
-    delay(ECO_ADV_INTERVAL);
+    powerDownSensors(); // Enforce shutdown state while in light sleep
+    delay(LOOP_SLEEP);
     return;
   }
 
