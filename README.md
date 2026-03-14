@@ -11,7 +11,8 @@ The device is designed to be housed in a custom 3D-printed enclosure, with desig
 
 > [!TIP]
 > **Other Hardware Options**  
->Check Out The [Mods Folder](./Mods) For Other Hardware Options.
+> Check Out The [Mods Folder](./Mods) For Other Hardware Options.
+> For new builds, check out the PCB version.
 
 ---
 
