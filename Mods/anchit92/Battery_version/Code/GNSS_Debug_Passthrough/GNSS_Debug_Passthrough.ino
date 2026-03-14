@@ -9,7 +9,7 @@
 
 // Uncomment the line below if using the custom PCB version where
 // the GPS_EN_PIN logic is inverted. (For PCB: LOW = ON, HIGH = OFF)
-#define PCB_VERSION
+// #define PCB_VERSION
 
 void setup() {
   // USB Serial for computer
