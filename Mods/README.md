@@ -4,7 +4,8 @@
 
 |              Author              |             Mod Name             |            Description           |
 | -------------------------------- | -------------------------------- | -------------------------------- |
-| anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | A battery powered version of the RaceBox Mini Emulator |
+| anchit92 |  [Battery Version](/Mods/anchit92/Battery_version/) | A battery powered version of the RaceBox Mini |
+| anchit92 |  [PCB Version](/Mods/anchit92/PCB_version/) | An open-source custom PCB version of the RaceBox Mini |
 
 
 # Information For Adding A Mod
