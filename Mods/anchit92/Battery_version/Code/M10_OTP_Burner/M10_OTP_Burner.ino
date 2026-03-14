@@ -5,7 +5,7 @@
 SFE_UBLOX_GNSS myGNSS;
 
 #define GPS_EN_PIN D1
-// #define PCB_VERSION // Uncomment for custom PCB logic
+// #define PCB_VERSION
 
 // --- U-BLOX M10 OTP PAYLOADS ---
 const uint8_t M10_OTP_192MHZ_CLOCK[] = {

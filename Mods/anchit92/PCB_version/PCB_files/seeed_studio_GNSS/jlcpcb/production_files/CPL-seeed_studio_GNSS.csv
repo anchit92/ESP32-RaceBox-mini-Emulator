@@ -1,0 +1,8 @@
+Designator,Val,Package,Mid X,Mid Y,Rotation,Layer
+Q1,AO3401A,SOT-23,168.5625,-108.0,0.0,top
+R1,100,R_0603_1608Metric,164.5,-106.5,180.0,top
+R2,100k,R_0603_1608Metric,164.5,-109.5,0.0,top
+R3,470,R_0603_1608Metric,163.98,-95.675,90.0,top
+R4,470,R_0603_1608Metric,166.0,-95.675,90.0,top
+R5,470,R_0603_1608Metric,168.0,-95.675,90.0,top
+R6,0,R_0402_1005Metric,183.0,-101.0,0.0,bottom
