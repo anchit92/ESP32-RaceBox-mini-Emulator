@@ -30,7 +30,7 @@ An open-source custom PCB and firmware project for a low-power, high-performance
   - *Alternatively*, any LiPo battery up to 10mm tall, 25mm wide, and 40mm long should fit in the space in the case. (e.g., [Amazon Option](https://www.amazon.com/dp/B09F9VK77V?ref=ppx_yo2ov_dt_b_fed_asin_title))
 - **PCB**: [JLCPCB](https://www.jlcpcb.com/)
 - **M3 Screw**: 1x M3 BHCS 4-6mm (for the pcb)
-- **3D Printed Case**: Use standard case files compatible with the PCB footprint.(you can get these manufactured at jlcpcb too, but I haven't tried that service from them)
+- **3D Printed Case**: Custom 3D printed case compatible with the PCB footprint.(you can get these manufactured at jlcpcb too, but I haven't tried that service from them)
 
 Approximate Cost : $60
 
