@@ -85,7 +85,7 @@ Install the following libraries via the Arduino Library Manager:
 You can customize the firmware by modifying the `#define` lines at the top of the `.ino` file:
 
 ### 1. GNSS Constellations
-Select which satellite systems to use. More systems = faster/better fix but slightly higher power usage.
+Select which satellite systems to use. More systems = faster/better fix but slightly higher power usage and lower Refresh Rate.
 ```cpp
 #define ENABLE_GNSS_GPS      // Always keep GPS enable
 #define ENABLE_GNSS_GALILEO  // Recommended for best performance
