@@ -1070,7 +1070,7 @@ void setup() {
 
   // Flash GREEN LED 5 times to indicate successful startup
   Serial.println("Startup Complete.");
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 1; i++) {
     digitalWrite(LED_GREEN, LOW); // ON
     delay(500);
     digitalWrite(LED_GREEN, HIGH); // OFF
