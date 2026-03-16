@@ -39,9 +39,9 @@ Approximate Cost : $60
 ## PCB Manufacture
 
 Use the fabrication files in `PCB_files/seeed_studio_GNSS/jlcpcb/production_files/` to order your assembled boards. 
-- **Assembly Type**: Order all of them with assembly on the **top side only** (the cost to do 2 or 5 is basically the same so dont bother skimping out).
+- **Assembly Type**: Order all of them with "Economic" assembly on the **top side only** (the cost to do 2 or 5 is basically the same so dont bother skimping out).
 - **Files**: The BOM file and the CPL file are included in the production files folder. 
-- *Note: It should cost something like $7 shipped for 5 boards. If the fabrication app quotes something like $40, it may be bugged—try refreshing or re-uploading the files.*
+- *Note: It should cost something like $7-$10 shipped for 5 boards. If the fabrication app quotes something like $40, it may be bugged—try refreshing or re-uploading the files.*
 
 ---
 
@@ -53,7 +53,7 @@ Therefore, **the board is specifically designed so that you can easily solder th
 2. Solder the **Seeed Studio XIAO nRF52840 Sense** directly to the designated pads on the PCB using castellated mounting.
 ![alt text](Images/IMG_4157.jpg)
 3. Solder the LiPo battery to the battery pads on the bottom of the XIAO.
-4. Secure the battery to the case with double-sided tape/ foam strip to prevent it from rattling around and snap the assembly together.
+4. Secure the battery to the case with double-sided tape/foam strips to prevent it from rattling around and snap the assembly together.
 ![alt text](Images/IMG_4159.jpg)
 ---
 
