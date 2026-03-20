@@ -1070,7 +1070,7 @@ void setup() {
 
   // Flash GREEN LED 5 times to indicate successful startup
   Serial.println("Startup Complete.");
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 1; i++) {
     digitalWrite(LED_GREEN, LOW); // ON
     delay(500);
     digitalWrite(LED_GREEN, HIGH); // OFF
@@ -1088,7 +1088,13 @@ void loop() {
     }
     managePower();
     powerDownSensors(); // Enforce shutdown state while in light sleep
-    delay(LOOP_SLEEP);
+    // Sleep in small chunks so we can wake up instantly when a BLE connection
+    // occurs
+    for (int i = 0; i < LOOP_SLEEP; i += 100) {
+      if (deviceConnected)
+        break;
+      delay(100);
+    }
     return;
   }
 
