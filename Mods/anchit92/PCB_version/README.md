@@ -51,6 +51,9 @@ If you order your PCB with JLCPCB SMT Assembly, note that having them include an
 
 Therefore, **the board is specifically designed so that you can easily solder the GNSS module by hand**. You will need to:
 1. Solder the **u-blox SAM-M10Q** GNSS module onto its designated footprint on the PCB. Note the orientation in the picture.
+   - Align the package on the PCB.
+   - Start with a single pin in one corner and fix it to the board. Then make sure it’s still aligned properly and do the same on the opposite corner.
+   - Lots of flux all around, optionally use leaded solder to make this easier, then drag solder and inspect your joints, more flux and reflow as needed until you have no bridges and good joints on all the pins.
 2. Solder the **Seeed Studio XIAO nRF52840 Sense** directly to the designated pads on the PCB using castellated mounting.
 ![alt text](Images/IMG_4157.jpg)
 3. Solder the LiPo battery to the battery pads on the bottom of the XIAO.
