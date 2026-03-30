@@ -59,6 +59,15 @@ Therefore, **the board is specifically designed so that you can easily solder th
 3. Solder the LiPo battery to the battery pads on the bottom of the XIAO.
 4. Secure the battery to the case with double-sided tape/foam strips to prevent it from rattling around and snap the assembly together.
 ![alt text](Images/IMG_4159.jpg)
+
+> [!NOTE]
+> **Optional: V_BKP Jumper (Back of the board)**
+> There is a `V_BKP` jumper on the back of the custom PCB. Bridging this jumper keeps the GNSS module's backup RAM powered during sleep to allow for a faster lock upon waking.
+> - **Pros:** Significantly faster GNSS lock times (reduces lock time from ~40 seconds down to ~10 seconds).
+> - **Cons:** Increases Light Sleep current from ~15µA up to 40-50µA. This extra pull makes up the majority of the sleep power budget and noticeably reduces standby battery life.
+> 
+> *Bridging this jumper is entirely usage-dependent. You can decide based on whether you prefer maximum standby battery life or faster lock times.*
+
 ---
 
 ## Firmware Setup
@@ -120,7 +129,7 @@ Configure whether the device sleeps or stays active while charging.
 ## Power Consumption & Runtime
 
 - **Active Mode**: ~20mA - 40mA depending on fix / constellations.
-- **Light Sleep** (BLE Advertising, GNSS Off): ~50µA
+- **Light Sleep** (BLE Advertising, GNSS Off): ~15µA (V_BKP Unbridged) to 40-50µA (V_BKP Bridged)
   - Available in 'Always On' firmware / Configurable.
   - Default behavior for the PCB Version.
 - **Deep Sleep** (System OFF, Wake-on-Shake): ~10µA - 40µA
@@ -144,7 +153,10 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~50µA — Low power consumption for daily usage (months of standby).
+**Power**: ~15µA to ~50µA (depending on V_BKP bridge). Both configurations offer amazing standby life. Theoretical standby on a standard 400mAh battery:
+- **Unbridged (~15µA)**: ~1,111 days (~3 years)
+- **Bridged (~40-50µA)**: ~333 to ~416 days (~11-14 months)
+*(Note: Real-world results will be lower due to battery self-discharge and BMS overhead, but in both cases, you will easily achieve many months of standby.)*
 
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 15 minutes)
