@@ -65,8 +65,7 @@ Therefore, **the board is specifically designed so that you can easily solder th
 > There is a `V_BKP` jumper on the back of the custom PCB. Bridging this jumper keeps the GNSS module's backup RAM powered during sleep to allow for a faster lock upon waking.
 > - **Pros:** Significantly faster GNSS lock times (reduces lock time from ~40 seconds down to ~10 seconds).
 > - **Cons:** Increases Light Sleep current from ~15µA up to 40-50µA. This extra pull makes up the majority of the sleep power budget and noticeably reduces standby battery life.
-> 
-> *Bridging this jumper is entirely usage-dependent. You can decide based on whether you prefer maximum standby battery life or faster lock times.*
+> **Recommendation:** *Just bridge it.* Even with the larger ~50µA continuous draw, the device will effortlessly sit in standby for many months. The massive improvement in initial GPS lock times almost always outweighs holding onto extreme long-term battery life.
 
 ---
 
@@ -156,7 +155,7 @@ This device supports two power-saving modes depending on the Configuration in th
 **Power**: ~15µA to ~50µA (depending on V_BKP bridge). Both configurations offer amazing standby life. Theoretical standby on a standard 400mAh battery:
 - **Unbridged (~15µA)**: ~1,111 days (~3 years)
 - **Bridged (~40-50µA)**: ~333 to ~416 days (~11-14 months)
-*(Note: Real-world results will be lower due to battery self-discharge and BMS overhead, but in both cases, you will easily achieve many months of standby.)*
+*(Note: Real-world results will be lower due to battery self-discharge and BMS overhead, but in both cases, you will easily achieve many months of standby. **Bridging the V_BKP is highly recommended** since ~11 months is more than enough time for most practical uses, and the vastly improved lock times are worth it.)*
 
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 15 minutes)
