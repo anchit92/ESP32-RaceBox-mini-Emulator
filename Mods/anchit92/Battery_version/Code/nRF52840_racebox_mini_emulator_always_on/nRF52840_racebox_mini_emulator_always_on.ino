@@ -31,12 +31,13 @@
 #define ENABLE_DEEP_SLEEP false   // Usually false for standard RaceBox usage
 #define FAST_ADV_INTERVAL 160 // 100ms: Fast discovery for apps (160 * 0.625ms)
 #define ECO_ADV_INTERVAL                                                       \
-  4000 // 2500ms: Extremely low power (4000 * 0.625ms = 2.5s latency to connect)
-#define LOOP_SLEEP 2500 // 2500ms delay for the main loop iteration while idle
+  2000 // 1250ms: Extremely low power (2000 * 0.625ms = 1.25s latency to
+       // connect)
+#define LOOP_SLEEP 1000 // 1000ms delay for the main loop iteration while idle
 #define SLEEP_WHILE_CHARGING                                                   \
-  true // Allow Light Sleep even when plugged in /Set false to force high power
+  true // Allow Light Sleep even when plugged in Set false to force high power
        // mode when plugged in
-#define LOW_POWER_BT_TX_POWER -4 // dBm for low power consumption
+#define LOW_POWER_BT_TX_POWER 0 // dBm for low power consumption
 
 // --- GNSS Constellation Toggle ---
 #define ENABLE_GNSS_GPS
@@ -185,50 +186,14 @@ float getRawPercentage() {
 
 // State Update
 void updateBatteryState() {
-  static float filteredPct = -1.0;
-  bool pluggedIn = isCharging();
   float rawPct = getRawPercentage();
   float currentV = getBatteryVoltage();
-
-  // Initial Sync
-  if (filteredPct < 0) {
-    filteredPct = rawPct;
-    currentBatteryPercentage = (uint8_t)rawPct;
-  }
-
-  // Heavy Filter (Adjusted for 30s interval to prevent lag)
-  filteredPct = (rawPct * 0.15) + (filteredPct * 0.85);
-  uint8_t rounded = (uint8_t)(filteredPct + 0.5);
 
   // Set Critical Flag (e.g., below 3.35V / 10%)
   isCritical = (currentV < 3.35);
 
-  // --- STICKY 100% LATCH ---
-  // If we were at 100%, don't drop the display until the filtered value
-  // hits 95%. This prevents the 5V boost-regulator sag from killing
-  // the "Full" status immediately upon power-on.
-  if (currentBatteryPercentage == 100 && !pluggedIn && rounded > 95) {
-    rounded = 100;
-  }
-
-  if (abs((int)rounded - (int)currentBatteryPercentage) >= 2 ||
-      rounded == 100 || rounded == 0) {
-    if (pluggedIn) {
-      if (rounded > currentBatteryPercentage)
-        currentBatteryPercentage = rounded;
-    } else {
-      if (rounded < currentBatteryPercentage)
-        currentBatteryPercentage = rounded;
-
-      // Boot/Recovery Sync: If raw is significantly out of sync, force update.
-      // This prevents the percentage from getting stuck if updates were missed.
-      if (rawPct > currentBatteryPercentage + 5.0 ||
-          currentBatteryPercentage > rawPct + 20.0) {
-        currentBatteryPercentage = (uint8_t)rawPct;
-        filteredPct = rawPct;
-      }
-    }
-  }
+  // Directly map raw percentage to current battery percentage
+  currentBatteryPercentage = (uint8_t)(rawPct + 0.5);
 }
 
 bool isPluggedIn() {
@@ -247,14 +212,6 @@ float getBatteryVoltage() {
   }
   float adcCount = (float)sum / 8.0;
   float voltage = (batteryMultiplier * 3.6 * adcCount / 4096);
-
-  // --- LOAD COMPENSATION ---
-  // If the GPS is running (30mA draw), the battery voltage sags.
-  // We add an offset to compensate so the percentage doesn't drop just
-  // because the sensors turned on.
-  if (gpsEnabled && !isPluggedIn()) {
-    voltage += 0.010; // Approx compensation for 30mA on a 1000mAh pack
-  }
 
   if (!isCharging() && !isPluggedIn()) {
     digitalWrite(PIN_VBAT_ENABLE, HIGH);
@@ -1070,7 +1027,7 @@ void setup() {
 
   // Flash GREEN LED 5 times to indicate successful startup
   Serial.println("Startup Complete.");
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < 1; i++) {
     digitalWrite(LED_GREEN, LOW); // ON
     delay(500);
     digitalWrite(LED_GREEN, HIGH); // OFF
@@ -1088,7 +1045,13 @@ void loop() {
     }
     managePower();
     powerDownSensors(); // Enforce shutdown state while in light sleep
-    delay(LOOP_SLEEP);
+    // Sleep in small chunks so we can wake up instantly when a BLE connection
+    // occurs
+    for (int i = 0; i < LOOP_SLEEP; i += 100) {
+      if (deviceConnected)
+        break;
+      delay(100);
+    }
     return;
   }
 
