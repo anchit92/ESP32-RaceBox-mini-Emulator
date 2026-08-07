@@ -61,11 +61,11 @@ Therefore, **the board is specifically designed so that you can easily solder th
 ![alt text](Images/IMG_4159.jpg)
 
 > [!NOTE]
-> **Optional: V_BKP Jumper (Back of the board)**
-> There is a `V_BKP` jumper on the back of the custom PCB. Bridging this jumper keeps the GNSS module's backup RAM powered during sleep to allow for a faster lock upon waking.
-> - **Pros:** Significantly faster GNSS lock times (reduces lock time from ~40 seconds down to ~10 seconds).
-> - **Cons:** Increases Light Sleep current from ~15µA up to 40-50µA. This extra pull makes up the majority of the sleep power budget and noticeably reduces standby battery life.
-> **Recommendation:** *Just bridge it.* Even with the larger ~50µA continuous draw, the device will effortlessly sit in standby for many months. The massive improvement in initial GPS lock times almost always outweighs holding onto extreme long-term battery life.
+> **Optional: V_BKP Cuttable Trace (Back of the board, v1.1+)**
+> There is a `V_BKP` cuttable trace on the back of the custom PCB. **It is connected by default in v1.1**, keeping the GNSS module's backup RAM powered during sleep for a faster lock on wake-up.
+> - **Connected (default):** Significantly faster GNSS lock times (reduces lock time from ~40 seconds down to ~10 seconds). Increases Light Sleep current from ~15µA up to 40-50µA.
+> - **Cut:** Drops Light Sleep current back down to ~15µA at the cost of slower initial GNSS lock times.
+> **Recommendation:** *Leave it connected.* Even with the larger ~50µA continuous draw, the device will effortlessly sit in standby for many months. The massive improvement in initial GPS lock times almost always outweighs holding onto extreme long-term battery life.
 
 ---
 
@@ -128,7 +128,7 @@ Configure whether the device sleeps or stays active while charging.
 ## Power Consumption & Runtime
 
 - **Active Mode**: ~20mA - 40mA depending on fix / constellations.
-- **Light Sleep** (BLE Advertising, GNSS Off): ~15µA (V_BKP Unbridged) to 40-50µA (V_BKP Bridged)
+- **Light Sleep** (BLE Advertising, GNSS Off): ~15µA (V_BKP cut) to 40-50µA (V_BKP connected, default)
   - Available in 'Always On' firmware / Configurable.
   - Default behavior for the PCB Version.
 - **Deep Sleep** (System OFF, Wake-on-Shake): ~10µA - 40µA
@@ -152,10 +152,10 @@ This device supports two power-saving modes depending on the Configuration in th
 ### 1. Light Sleep (Default Configuration)
 **Behavior**: GNSS and IMU are powered down, but **BLE Advertising continues** (at a slower Eco rate).
 **Usage**: Recommended for most users. Ensures the device is always discoverable and ready to connect instantly.
-**Power**: ~15µA to ~50µA (depending on V_BKP bridge). Both configurations offer amazing standby life. Theoretical standby on a standard 400mAh battery:
-- **Unbridged (~15µA)**: ~1,111 days (~3 years)
-- **Bridged (~40-50µA)**: ~333 to ~416 days (~11-14 months)
-*(Note: Real-world results will be lower due to battery self-discharge and BMS overhead, but in both cases, you will easily achieve many months of standby. **Bridging the V_BKP is highly recommended** since ~11 months is more than enough time for most practical uses, and the vastly improved lock times are worth it.)*
+**Power**: ~15µA to ~50µA (depending on V_BKP cuttable trace). Both configurations offer amazing standby life. Theoretical standby on a standard 400mAh battery:
+- **V_BKP cut (~15µA)**: ~1,111 days (~3 years)
+- **V_BKP connected (~40-50µA, default in v1.1+)**: ~333 to ~416 days (~11-14 months)
+*(Note: Real-world results will be lower due to battery self-discharge and BMS overhead, but in both cases, you will easily achieve many months of standby. **Leaving V_BKP connected is highly recommended** since ~11 months is more than enough time for most practical uses, and the vastly improved lock times are worth it.)*
 
 **Trigger**:
 - Occurs after GPS Hot Timeout after BLE disconnection. (default 15 minutes)
