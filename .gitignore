@@ -28,3 +28,11 @@ env/
 
 # Misc
 *.swp
+
+# KiCad local/temp files
+*.kicad_prl
+fp-info-cache
+*-backups/
+
+# KiCad database files
+jlcpcb/project.db
